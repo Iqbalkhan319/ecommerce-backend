@@ -1,0 +1,55 @@
+name: ecom-backend-test
+
+networks:
+  test:
+    driver: bridge
+
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    networks: [test]
+    environment:
+      POSTGRES_DB: ecommerce_test
+      POSTGRES_USER: ecom_owner
+      POSTGRES_PASSWORD: test_only_password
+      AUTH_DB_PASSWORD: test_only_password
+      ADMIN_DB_PASSWORD: test_only_password
+      PUBLIC_DB_PASSWORD: test_only_password
+    volumes:
+      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecom_owner -d ecommerce_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis-test:
+    image: redis:7-alpine
+    networks: [test]
+    command: ["redis-server", "--requirepass", "test_only_password", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:56379:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a test_only_password ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  rabbitmq-test:
+    image: rabbitmq:3.13-alpine
+    networks: [test]
+    environment:
+      RABBITMQ_DEFAULT_USER: ecom_test
+      RABBITMQ_DEFAULT_PASS: test_only_password
+    ports:
+      - "127.0.0.1:55672:5672"
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s

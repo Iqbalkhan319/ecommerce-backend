@@ -1,0 +1,22 @@
+# Copy to docker-compose.override.yml for local debugging only.
+# It publishes datastore ports on loopback so that psql / redis-cli / a local IDE
+# can connect. Never use this file on a shared or production host.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+  rabbitmq:
+    ports:
+      - "127.0.0.1:5672:5672"
+  auth-service:
+    ports:
+      - "127.0.0.1:3001:3001"
+  admin-service:
+    ports:
+      - "127.0.0.1:3002:3002"
+  public-service:
+    ports:
+      - "127.0.0.1:3003:3003"
