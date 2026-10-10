@@ -1,9 +1,20 @@
 name: ecom-backend
 
+# Production-safe base.
+#   prod: docker compose up -d --build
+#   dev : docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+# Debug-only tools (RedisInsight) sit behind a profile:
+#   docker compose --profile debug up -d redisinsight
+
 networks:
   edge:
     driver: bridge
   data:
+    driver: bridge
+  # Shared with the frontend stack. ONLY Kong joins it, so the Next.js servers can reach the
+  # gateway by name (http://kong:8000) without Kong being published on any host address.
+  gateway:
+    name: ecom-gateway
     driver: bridge
 
 volumes:
@@ -16,11 +27,22 @@ volumes:
 x-service-common: &service-common
   restart: unless-stopped
   stop_grace_period: 30s
+  security_opt:
+    - no-new-privileges:true
   logging:
     driver: json-file
     options:
       max-size: "10m"
       max-file: "3"
+
+# Applied to the three Node services only (non-root, ports > 1024).
+x-app-hardening: &app-hardening
+  cap_drop: [ALL]
+  # Needs the patched docker/entrypoint.sh (calls node_modules/.bin/knex directly, no npx/npm
+  # at runtime). If a container logs EROFS on startup, comment this line out and report it.
+  read_only: true
+  tmpfs:
+    - /tmp
 
 x-service-env: &service-env
   NODE_ENV: ${NODE_ENV:-production}
@@ -28,9 +50,14 @@ x-service-env: &service-env
   LOG_PRETTY: ${LOG_PRETTY:-false}
   API_PREFIX: api
   API_VERSION: v1
-  TRUST_PROXY: "true"
+  # The app trusts exactly one proxy hop (Kong). If a reverse proxy (Nginx/Caddy) sits in front
+  # of Kong, the services see that proxy's IP for every request, so the per-IP limits below
+  # become site-wide limits. In that case raise them in .env; Kong still limits per real client IP.
+  TRUST_PROXY: ${TRUST_PROXY:-true}
+  RATE_LIMIT_TTL_MS: ${RATE_LIMIT_TTL_MS:-60000}
+  RATE_LIMIT_LIMIT: ${RATE_LIMIT_LIMIT:-300}
   BODY_LIMIT: ${BODY_LIMIT:-512kb}
-  SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
+  SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
   CORS_ORIGINS: ${CORS_ORIGINS:-}
   JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?JWT_PUBLIC_KEY is required - run npm run keys:generate}
   JWT_ISSUER: ${JWT_ISSUER:-ecom-auth}
@@ -38,15 +65,20 @@ x-service-env: &service-env
   REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
   REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-ecom}
   CACHE_ENABLED: ${CACHE_ENABLED:-true}
-  RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672${RABBITMQ_VHOST:-/}
+  # Vhost is fixed to "/" (URL-encoded as %2F). The old ${RABBITMQ_VHOST} was used both as the
+  # broker vhost name and as the URL path, so any custom value would have mismatched.
+  RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672/%2F
   RABBITMQ_ENABLED: ${RABBITMQ_ENABLED:-true}
   INTERNAL_API_KEY: ${INTERNAL_API_KEY:?INTERNAL_API_KEY is required}
+  # Each service migrates only its own schema, so this is safe with ONE replica per service.
+  # If you ever scale a service to >1 replica, run migrations as a one-off job instead.
   RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
 
 services:
   postgres:
     image: postgres:16-alpine
     <<: *service-common
+    mem_limit: ${POSTGRES_MEM_LIMIT:-1g}
     networks: [data]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ecommerce}
@@ -69,35 +101,38 @@ services:
   redis:
     image: redis:7-alpine
     <<: *service-common
+    mem_limit: ${REDIS_MEM_LIMIT:-384m}
     networks: [data]
     command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
+    environment:
+      # redis-cli reads this, so the password never appears on the healthcheck command line.
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
       - ./infrastructure/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 10s
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     <<: *service-common
+    mem_limit: ${RABBITMQ_MEM_LIMIT:-768m}
     networks: [data]
     hostname: ecom-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
-      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+      RABBITMQ_DEFAULT_VHOST: "/"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
       - ./infrastructure/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
       - ./infrastructure/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
     ports:
-      - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+      - "${RABBITMQ_BIND_ADDR:-127.0.0.1}:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     healthcheck:
       test: ["CMD-SHELL", "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms"]
       interval: 15s
@@ -106,9 +141,11 @@ services:
       start_period: 40s
 
   redisinsight:
-    image: redis/redisinsight:latest
+    image: redis/redisinsight:${REDISINSIGHT_TAG:-latest}   # pin REDISINSIGHT_TAG in .env
     <<: *service-common
-    networks: [data, edge]
+    profiles: [debug]
+    mem_limit: 256m
+    networks: [data]            # data only: it has no reason to sit on the edge network
     depends_on:
       redis:
         condition: service_healthy
@@ -121,12 +158,13 @@ services:
     volumes:
       - redisinsight_data:/data
     ports:
-      - "127.0.0.1:${REDISINSIGHT_PORT:-5540}:5540"
+      - "${REDISINSIGHT_BIND_ADDR:-127.0.0.1}:${REDISINSIGHT_PORT:-5540}:5540"
 
   kong:
     image: kong:3.9
     <<: *service-common
-    networks: [edge]
+    mem_limit: ${KONG_MEM_LIMIT:-512m}
+    networks: [edge, gateway]
     depends_on:
       auth-service:
         condition: service_healthy
@@ -138,24 +176,29 @@ services:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml
       KONG_PROXY_ACCESS_LOG: /dev/stdout
-      KONG_ADMIN_ACCESS_LOG: /dev/stdout
       KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_LOG_LEVEL: ${KONG_LOG_LEVEL:-notice}
-      KONG_ADMIN_LISTEN: 0.0.0.0:8001
-      KONG_ADMIN_GUI_LISTEN: 0.0.0.0:8002
-      KONG_ADMIN_GUI_URL: http://localhost:${KONG_MANAGER_PORT:-8002}
+      # The Admin API is unauthenticated and, in DB-less mode, POST /config replaces the whole
+      # gateway config. Every backend container shares the edge network with Kong, so keep it
+      # off here. docker-compose.dev.yml turns it back on for local work.
+      KONG_ADMIN_LISTEN: "off"
+      KONG_ADMIN_GUI_LISTEN: "off"
       KONG_PROXY_LISTEN: 0.0.0.0:8000
       KONG_NGINX_WORKER_PROCESSES: ${KONG_WORKERS:-2}
       KONG_PLUGINS: bundled
-      KONG_REAL_IP_HEADER: X-Forwarded-For
-      KONG_TRUSTED_IPS: 0.0.0.0/0,::/0
+      # Kong is exposed directly by default, so trust no forwarded headers (loopback only).
+      # Behind a host Nginx/Caddy set KONG_TRUSTED_IPS=172.16.0.0/12 (Docker bridge gateway);
+      # behind Cloudflare set KONG_REAL_IP_HEADER=CF-Connecting-IP and Cloudflare's ranges.
+      KONG_REAL_IP_HEADER: ${KONG_REAL_IP_HEADER:-X-Forwarded-For}
+      KONG_TRUSTED_IPS: ${KONG_TRUSTED_IPS:-127.0.0.1}
     volumes:
       - ./infrastructure/kong/kong.yml:/kong/declarative/kong.yml:ro
     ports:
-      - "${KONG_PROXY_PORT:-8000}:8000"
-      - "127.0.0.1:${KONG_ADMIN_PORT:-8001}:8001"
-      - "127.0.0.1:${KONG_MANAGER_PORT:-8002}:8002"
+      # Loopback by default. Docker-published ports bypass ufw, so set KONG_BIND_ADDR=0.0.0.0
+      # only to expose Kong directly; in production put Caddy/Nginx (TLS) in front.
+      - "${KONG_BIND_ADDR:-127.0.0.1}:${KONG_PROXY_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "kong", "health"]
       interval: 15s
@@ -170,7 +213,8 @@ services:
       target: runtime
     image: ecom/auth-service:${IMAGE_TAG:-local}
     pull_policy: build
-    <<: *service-common
+    <<: [*service-common, *app-hardening]
+    mem_limit: ${APP_MEM_LIMIT:-512m}
     networks: [data, edge]
     depends_on:
       postgres:
@@ -194,6 +238,12 @@ services:
       SUPER_ADMIN_ROTATE_PASSWORD: ${SUPER_ADMIN_ROTATE_PASSWORD:-false}
       LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-8}
       LOGIN_LOCKOUT_MINUTES: ${LOGIN_LOCKOUT_MINUTES:-15}
+      THROTTLE_WINDOW_MS: ${THROTTLE_WINDOW_MS:-60000}
+      THROTTLE_REGISTER_LIMIT: ${THROTTLE_REGISTER_LIMIT:-5}
+      THROTTLE_LOGIN_LIMIT: ${THROTTLE_LOGIN_LIMIT:-10}
+      THROTTLE_REFRESH_LIMIT: ${THROTTLE_REFRESH_LIMIT:-30}
+      THROTTLE_PASSWORD_LIMIT: ${THROTTLE_PASSWORD_LIMIT:-5}
+      THROTTLE_FORGOT_LIMIT: ${THROTTLE_FORGOT_LIMIT:-3}
       RUN_SEED: ${RUN_SEED:-false}
 
   admin-service:
@@ -203,7 +253,8 @@ services:
       target: runtime
     image: ecom/admin-service:${IMAGE_TAG:-local}
     pull_policy: build
-    <<: *service-common
+    <<: [*service-common, *app-hardening]
+    mem_limit: ${APP_MEM_LIMIT:-512m}
     networks: [data, edge]
     depends_on:
       postgres:
@@ -243,7 +294,8 @@ services:
       target: runtime
     image: ecom/public-service:${IMAGE_TAG:-local}
     pull_policy: build
-    <<: *service-common
+    <<: [*service-common, *app-hardening]
+    mem_limit: ${APP_MEM_LIMIT:-512m}
     networks: [data, edge]
     depends_on:
       postgres:
@@ -264,3 +316,276 @@ services:
       AUTH_SERVICE_URL: http://auth-service:3001
       CATALOG_CACHE_TTL_SECONDS: ${CATALOG_CACHE_TTL_SECONDS:-120}
       RUN_SEED: ${RUN_SEED:-false}
+
+
+
+
+
+
+
+# name: ecom-backend
+
+# networks:
+#   edge:
+#     driver: bridge
+#   data:
+#     driver: bridge
+
+# volumes:
+#   postgres_data:
+#   redis_data:
+#   rabbitmq_data:
+#   redisinsight_data:
+#   invoice_data:
+
+# x-service-common: &service-common
+#   restart: unless-stopped
+#   stop_grace_period: 30s
+#   logging:
+#     driver: json-file
+#     options:
+#       max-size: "10m"
+#       max-file: "3"
+
+# x-service-env: &service-env
+#   NODE_ENV: ${NODE_ENV:-production}
+#   LOG_LEVEL: ${LOG_LEVEL:-info}
+#   LOG_PRETTY: ${LOG_PRETTY:-false}
+#   API_PREFIX: api
+#   API_VERSION: v1
+#   TRUST_PROXY: "true"
+#   BODY_LIMIT: ${BODY_LIMIT:-512kb}
+#   SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
+#   CORS_ORIGINS: ${CORS_ORIGINS:-}
+#   JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?JWT_PUBLIC_KEY is required - run npm run keys:generate}
+#   JWT_ISSUER: ${JWT_ISSUER:-ecom-auth}
+#   JWT_AUDIENCE: ${JWT_AUDIENCE:-ecom-api}
+#   REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
+#   REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-ecom}
+#   CACHE_ENABLED: ${CACHE_ENABLED:-true}
+#   RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672${RABBITMQ_VHOST:-/}
+#   RABBITMQ_ENABLED: ${RABBITMQ_ENABLED:-true}
+#   INTERNAL_API_KEY: ${INTERNAL_API_KEY:?INTERNAL_API_KEY is required}
+#   RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+
+# services:
+#   postgres:
+#     image: postgres:16-alpine
+#     <<: *service-common
+#     networks: [data]
+#     environment:
+#       POSTGRES_DB: ${POSTGRES_DB:-ecommerce}
+#       POSTGRES_USER: ${POSTGRES_USER:-ecom_owner}
+#       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+#       AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?AUTH_DB_PASSWORD is required}
+#       ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD:?ADMIN_DB_PASSWORD is required}
+#       PUBLIC_DB_PASSWORD: ${PUBLIC_DB_PASSWORD:?PUBLIC_DB_PASSWORD is required}
+#       POSTGRES_INITDB_ARGS: "--data-checksums"
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+#       - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ecom_owner} -d ${POSTGRES_DB:-ecommerce}"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 10
+#       start_period: 20s
+
+#   redis:
+#     image: redis:7-alpine
+#     <<: *service-common
+#     networks: [data]
+#     command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
+#     volumes:
+#       - redis_data:/data
+#       - ./infrastructure/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+#     healthcheck:
+#       test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 10
+#       start_period: 10s
+#     environment:
+#       REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+#   rabbitmq:
+#     image: rabbitmq:3.13-management-alpine
+#     <<: *service-common
+#     networks: [data]
+#     hostname: ecom-rabbitmq
+#     environment:
+#       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
+#       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+#       RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+#     volumes:
+#       - rabbitmq_data:/var/lib/rabbitmq
+#       - ./infrastructure/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+#       - ./infrastructure/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+#     ports:
+#       - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+#     healthcheck:
+#       test: ["CMD-SHELL", "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms"]
+#       interval: 15s
+#       timeout: 10s
+#       retries: 10
+#       start_period: 40s
+
+#   redisinsight:
+#     image: redis/redisinsight:latest
+#     <<: *service-common
+#     networks: [data, edge]
+#     depends_on:
+#       redis:
+#         condition: service_healthy
+#     environment:
+#       RI_APP_PORT: 5540
+#       RI_REDIS_HOST: redis
+#       RI_REDIS_PORT: 6379
+#       RI_REDIS_PASSWORD: ${REDIS_PASSWORD}
+#       RI_REDIS_ALIAS: ecom-cache
+#     volumes:
+#       - redisinsight_data:/data
+#     ports:
+#       - "127.0.0.1:${REDISINSIGHT_PORT:-5540}:5540"
+
+#   kong:
+#     image: kong:3.9
+#     <<: *service-common
+#     networks: [edge]
+#     depends_on:
+#       auth-service:
+#         condition: service_healthy
+#       admin-service:
+#         condition: service_healthy
+#       public-service:
+#         condition: service_healthy
+#     environment:
+#       KONG_DATABASE: "off"
+#       KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml
+#       KONG_PROXY_ACCESS_LOG: /dev/stdout
+#       KONG_ADMIN_ACCESS_LOG: /dev/stdout
+#       KONG_PROXY_ERROR_LOG: /dev/stderr
+#       KONG_ADMIN_ERROR_LOG: /dev/stderr
+#       KONG_LOG_LEVEL: ${KONG_LOG_LEVEL:-notice}
+#       KONG_ADMIN_LISTEN: 0.0.0.0:8001
+#       KONG_ADMIN_GUI_LISTEN: 0.0.0.0:8002
+#       KONG_ADMIN_GUI_URL: http://localhost:${KONG_MANAGER_PORT:-8002}
+#       KONG_PROXY_LISTEN: 0.0.0.0:8000
+#       KONG_NGINX_WORKER_PROCESSES: ${KONG_WORKERS:-2}
+#       KONG_PLUGINS: bundled
+#       KONG_REAL_IP_HEADER: X-Forwarded-For
+#       KONG_TRUSTED_IPS: 0.0.0.0/0,::/0
+#     volumes:
+#       - ./infrastructure/kong/kong.yml:/kong/declarative/kong.yml:ro
+#     ports:
+#       - "${KONG_PROXY_PORT:-8000}:8000"
+#       - "127.0.0.1:${KONG_ADMIN_PORT:-8001}:8001"
+#       - "127.0.0.1:${KONG_MANAGER_PORT:-8002}:8002"
+#     healthcheck:
+#       test: ["CMD", "kong", "health"]
+#       interval: 15s
+#       timeout: 10s
+#       retries: 10
+#       start_period: 20s
+
+#   auth-service:
+#     build:
+#       context: .
+#       dockerfile: services/auth/Dockerfile
+#       target: runtime
+#     image: ecom/auth-service:${IMAGE_TAG:-local}
+#     pull_policy: build
+#     <<: *service-common
+#     networks: [data, edge]
+#     depends_on:
+#       postgres:
+#         condition: service_healthy
+#       redis:
+#         condition: service_healthy
+#       rabbitmq:
+#         condition: service_healthy
+#     environment:
+#       <<: *service-env
+#       SERVICE_NAME: auth-service
+#       PORT: 3001
+#       DATABASE_URL: postgresql://auth_service:${AUTH_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-ecommerce}
+#       DATABASE_POOL_MAX: "10"
+#       JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?JWT_PRIVATE_KEY is required - run npm run keys:generate}
+#       ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-600}
+#       REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-1209600}
+#       SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:?SUPER_ADMIN_EMAIL is required}
+#       SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:?SUPER_ADMIN_PASSWORD is required}
+#       SUPER_ADMIN_NAME: ${SUPER_ADMIN_NAME:-Platform Owner}
+#       SUPER_ADMIN_ROTATE_PASSWORD: ${SUPER_ADMIN_ROTATE_PASSWORD:-false}
+#       LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-8}
+#       LOGIN_LOCKOUT_MINUTES: ${LOGIN_LOCKOUT_MINUTES:-15}
+#       RUN_SEED: ${RUN_SEED:-false}
+
+#   admin-service:
+#     build:
+#       context: .
+#       dockerfile: services/admin/Dockerfile
+#       target: runtime
+#     image: ecom/admin-service:${IMAGE_TAG:-local}
+#     pull_policy: build
+#     <<: *service-common
+#     networks: [data, edge]
+#     depends_on:
+#       postgres:
+#         condition: service_healthy
+#       redis:
+#         condition: service_healthy
+#       rabbitmq:
+#         condition: service_healthy
+#       auth-service:
+#         condition: service_healthy
+#     environment:
+#       <<: *service-env
+#       SERVICE_NAME: admin-service
+#       PORT: 3002
+#       DATABASE_URL: postgresql://admin_service:${ADMIN_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-ecommerce}
+#       DATABASE_POOL_MAX: "15"
+#       AUTH_SERVICE_URL: http://auth-service:3001
+#       INVOICE_STORAGE_DIR: /app/storage/invoices
+#       INVOICE_COMPANY_NAME: ${INVOICE_COMPANY_NAME:-Aurelia Commerce Ltd}
+#       INVOICE_COMPANY_ADDRESS: ${INVOICE_COMPANY_ADDRESS:-House 42, Road 11, Banani, Dhaka 1213}
+#       INVOICE_COMPANY_EMAIL: ${INVOICE_COMPANY_EMAIL:-billing@aurelia.example}
+#       INVOICE_COMPANY_REGISTRATION: ${INVOICE_COMPANY_REGISTRATION:-UEN 202400123X}
+#       INVOICE_CURRENCY: ${INVOICE_CURRENCY:-BDT}
+#       INVOICE_TAX_RATE: ${INVOICE_TAX_RATE:-0}
+#       SHIPPING_FLAT_RATE: ${SHIPPING_FLAT_RATE:-120}
+#       FREE_SHIPPING_THRESHOLD: ${FREE_SHIPPING_THRESHOLD:-5000}
+#       OUTBOX_POLL_INTERVAL_MS: ${OUTBOX_POLL_INTERVAL_MS:-1000}
+#       OUTBOX_BATCH_SIZE: ${OUTBOX_BATCH_SIZE:-50}
+#       RUN_SEED: ${RUN_SEED:-false}
+#     volumes:
+#       - invoice_data:/app/storage/invoices
+
+#   public-service:
+#     build:
+#       context: .
+#       dockerfile: services/public/Dockerfile
+#       target: runtime
+#     image: ecom/public-service:${IMAGE_TAG:-local}
+#     pull_policy: build
+#     <<: *service-common
+#     networks: [data, edge]
+#     depends_on:
+#       postgres:
+#         condition: service_healthy
+#       redis:
+#         condition: service_healthy
+#       rabbitmq:
+#         condition: service_healthy
+#       admin-service:
+#         condition: service_healthy
+#     environment:
+#       <<: *service-env
+#       SERVICE_NAME: public-service
+#       PORT: 3003
+#       DATABASE_URL: postgresql://public_service:${PUBLIC_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-ecommerce}
+#       DATABASE_POOL_MAX: "15"
+#       ADMIN_SERVICE_URL: http://admin-service:3002
+#       AUTH_SERVICE_URL: http://auth-service:3001
+#       CATALOG_CACHE_TTL_SECONDS: ${CATALOG_CACHE_TTL_SECONDS:-120}
+#       RUN_SEED: ${RUN_SEED:-false}

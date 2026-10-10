@@ -42,7 +42,7 @@ COPY --from=build /app/services/admin/package.json services/admin/package.json
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 RUN chmod +x /usr/local/bin/entrypoint.sh \
- && mkdir -p /app/storage \
+ && mkdir -p /app/storage/invoices \
  && chown -R node:node /app/storage
 
 USER node
