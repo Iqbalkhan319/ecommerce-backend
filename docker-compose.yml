@@ -1,334 +1,370 @@
+# =====================================================================
+# ecom-backend – docker-compose.yml (প্রতিটি লাইনের বাংলা ব্যাখ্যাসহ)
+# =====================================================================
+
+# এই stack/project এর নাম। container, network, volume এর নামের prefix হিসেবে ব্যবহার হয় (যেমন ecom-backend-postgres-1)।
 name: ecom-backend
 
-# Production-safe base.
-#   prod: docker compose up -d --build
-#   dev : docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-# Debug-only tools (RedisInsight) sit behind a profile:
-#   docker compose --profile debug up -d redisinsight
+# ---------------------------------------------------------------------
+# NETWORKS – container গুলোর মধ্যে যোগাযোগের virtual network
+# network হলো একটা রুম। একই রুমে থাকা কর্মীরা একে অপরের সাথে কথা বলতে পারে। ভিন্ন রুমে থাকলে পারে না। এখানে তিনটা রুম বানানো হচ্ছে: edge, data, gateway।
+# ---------------------------------------------------------------------
+networks:                  # এখান থেকে সব রুমের তালিকা শুরু
+  edge:                    # প্রথম রুমের নাম "edge"
+    driver: bridge         # সাধারণ private রুম (শুধু এই কম্পিউটারের ভেতরে)
+  data:                    # দ্বিতীয় রুমের নাম "data"
+    driver: bridge         # এটাও সাধারণ private রুম
+  gateway:                 # তৃতীয় রুমের নাম "gateway"
+    name: ecom-gateway     # Docker এ এই রুমের আসল নাম "ecom-gateway"
+    driver: bridge         # এটাও সাধারণ private রুম
 
-networks:
-  edge:
-    driver: bridge
-  data:
-    driver: bridge
-  # Shared with the frontend stack. ONLY Kong joins it, so the Next.js servers can reach the
-  # gateway by name (http://kong:8000) without Kong being published on any host address.
-  gateway:
-    name: ecom-gateway
-    driver: bridge
+# ---------------------------------------------------------------------
+# VOLUMES – container মুছে গেলেও data যাতে থেকে যায়
+# ---------------------------------------------------------------------
+volumes:                      # named volume এর তালিকা (Docker নিজে এগুলোর জায়গা ম্যানেজ করে)
+  postgres_data:              # PostgreSQL এর database ফাইল রাখার জন্য
+  redis_data:                 # Redis এর persistent data (RDB/AOF) এর জন্য
+  rabbitmq_data:              # RabbitMQ এর queue/message data এর জন্য
+  redisinsight_data:          # RedisInsight এর settings/connection data এর জন্য
+  invoice_data:               # admin-service এর তৈরি করা invoice ফাইল রাখার জন্য
 
-volumes:
-  postgres_data:
-  redis_data:
-  rabbitmq_data:
-  redisinsight_data:
-  invoice_data:
+# ---------------------------------------------------------------------
+# YAML ANCHORS – বারবার লেখা এড়াতে পুনর্ব্যবহারযোগ্য ব্লক
+# ---------------------------------------------------------------------
+x-service-common: &service-common   # "x-" দিয়ে শুরু = Compose এটা ignore করে (custom ব্লক); &service-common = এই ব্লকের anchor (লেবেল)
+  restart: unless-stopped     # container crash করলে বা server reboot হলে আবার চালু হবে; শুধু আপনি নিজে stop করলে হবে না
+  stop_grace_period: 30s      # বন্ধ করার সময় app কে ৩০ সেকেন্ড দেয় ভদ্রভাবে শেষ করতে, তারপর জোর করে kill
+  security_opt:               # security সংক্রান্ত অপশন
+    - no-new-privileges:true  # container এর ভেতরের process নতুন করে বেশি privilege (যেমন setuid দিয়ে root) পেতে পারবে না
+  logging:                    # log সংক্রান্ত সেটিং
+    driver: json-file         # log JSON ফাইলে জমা হবে (Docker এর default driver)
+    options:                  # driver এর অপশন
+      max-size: "10m"         # একটা log ফাইল ১০ MB হলে নতুন ফাইল শুরু হবে
+      max-file: "3"           # সর্বোচ্চ ৩টা log ফাইল রাখবে; পুরোনোটা মুছে যাবে (disk full হওয়া ঠেকায়)
 
-x-service-common: &service-common
-  restart: unless-stopped
-  stop_grace_period: 30s
-  security_opt:
-    - no-new-privileges:true
-  logging:
-    driver: json-file
-    options:
-      max-size: "10m"
-      max-file: "3"
 
-# Applied to the three Node services only (non-root, ports > 1024).
-x-app-hardening: &app-hardening
-  cap_drop: [ALL]
-  # Needs the patched docker/entrypoint.sh (calls node_modules/.bin/knex directly, no npx/npm
-  # at runtime). If a container logs EROFS on startup, comment this line out and report it.
-  read_only: true
-  tmpfs:
-    - /tmp
+x-app-hardening: &app-hardening   # কড়া নিয়মের একটা ফর্ম বানালাম। নাম দিলাম "app-hardening"
+  cap_drop: [ALL]                 # নিয়ম ১: কর্মীর হাত থেকে সব বাড়তি চাবি (বিশেষ ক্ষমতা) নিয়ে নাও
+  read_only: true                 # নিয়ম ২: দোকানের জিনিস শুধু দেখা যাবে, বদলানো বা নতুন কিছু রাখা যাবে না
+  tmpfs:                          # নিয়ম ৩: একটা ছোট সাময়িক খাতা দেওয়া হবে (কম্পিউটারের RAM এ থাকে)
+    - /tmp                        # খাতাটার নাম /tmp। শুধু এখানে লেখা যাবে। বন্ধ হলে সব মুছে যাবে
 
-x-service-env: &service-env
-  NODE_ENV: ${NODE_ENV:-production}
-  LOG_LEVEL: ${LOG_LEVEL:-info}
-  LOG_PRETTY: ${LOG_PRETTY:-false}
-  API_PREFIX: api
-  API_VERSION: v1
-  # The app trusts exactly one proxy hop (Kong). If a reverse proxy (Nginx/Caddy) sits in front
-  # of Kong, the services see that proxy's IP for every request, so the per-IP limits below
-  # become site-wide limits. In that case raise them in .env; Kong still limits per real client IP.
-  TRUST_PROXY: ${TRUST_PROXY:-true}
-  RATE_LIMIT_TTL_MS: ${RATE_LIMIT_TTL_MS:-60000}
-  RATE_LIMIT_LIMIT: ${RATE_LIMIT_LIMIT:-300}
-  BODY_LIMIT: ${BODY_LIMIT:-512kb}
-  SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
-  CORS_ORIGINS: ${CORS_ORIGINS:-}
-  JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?JWT_PUBLIC_KEY is required - run npm run keys:generate}
-  JWT_ISSUER: ${JWT_ISSUER:-ecom-auth}
-  JWT_AUDIENCE: ${JWT_AUDIENCE:-ecom-api}
-  REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
-  REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-ecom}
-  CACHE_ENABLED: ${CACHE_ENABLED:-true}
-  # Vhost is fixed to "/" (URL-encoded as %2F). The old ${RABBITMQ_VHOST} was used both as the
-  # broker vhost name and as the URL path, so any custom value would have mismatched.
-  RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672/%2F
-  RABBITMQ_ENABLED: ${RABBITMQ_ENABLED:-true}
-  INTERNAL_API_KEY: ${INTERNAL_API_KEY:?INTERNAL_API_KEY is required}
-  # Each service migrates only its own schema, so this is safe with ONE replica per service.
-  # If you ever scale a service to >1 replica, run migrations as a one-off job instead.
-  RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+# ধরুন একটা দোকানে ৩ জন কর্মী আছে (auth, admin, public)। সবাইকে আলাদা করে একই নিয়ম না বলে আপনি একটা সেটিং-এর কাগজ বানালেন, আর তিনজনকেই সেই কাগজের কপি দিলেন। এই ব্লকটাই সেই কাগজ।
+# আগে একটা চিহ্ন শিখে নিন  কাগজে বেশিরভাগ লাইনে এই চিহ্নগুলো আছে:
+# ${নাম:-মান}	নাম বলা থাকলে সেটা, না থাকলে এই মান,	চায়ে চিনি: কেউ বললে সেটা, না বললে ২ চামচ
+# ${নাম:?বার্তা}	এটা অবশ্যই লাগবে, না দিলে কাজ থামবে	পরীক্ষায় রোল নম্বর: না দিলে খাতা নেওয়া হবে না, এই দুটো বুঝলে নিচের প্রায় সব লাইন বোঝা হয়ে যাবে।
 
-services:
-  postgres:
-    image: postgres:16-alpine
-    <<: *service-common
-    mem_limit: ${POSTGRES_MEM_LIMIT:-1g}
-    networks: [data]
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-ecommerce}
-      POSTGRES_USER: ${POSTGRES_USER:-ecom_owner}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?AUTH_DB_PASSWORD is required}
-      ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD:?ADMIN_DB_PASSWORD is required}
-      PUBLIC_DB_PASSWORD: ${PUBLIC_DB_PASSWORD:?PUBLIC_DB_PASSWORD is required}
-      POSTGRES_INITDB_ARGS: "--data-checksums"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ecom_owner} -d ${POSTGRES_DB:-ecommerce}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+# ভাগ ১: ফর্মের নাম ও সাধারণ সেটিং
+x-service-env: &service-env         # সেটিং-এর কাগজ বানালাম। নাম দিলাম "service-env"
+  NODE_ENV: ${NODE_ENV:-production} # app আসল ব্যবহারের ধরনে চলবে (কেউ অন্য কিছু না বললে)
+  LOG_LEVEL: ${LOG_LEVEL:-info}     # কাজের খাতায় (log) মাঝারি পরিমাণ লিখবে
+  LOG_PRETTY: ${LOG_PRETTY:-false}  # খাতা সাজিয়ে লিখবে না (কম্পিউটারের পড়ার জন্য সরল থাকবে)
+  API_PREFIX: api                   # সব ঠিকানার শুরু হবে /api দিয়ে
+  API_VERSION: v1                   # সংস্করণ v1, তাই ঠিকানা: /api/v1/...
 
-  redis:
-    image: redis:7-alpine
-    <<: *service-common
-    mem_limit: ${REDIS_MEM_LIMIT:-384m}
-    networks: [data]
-    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
-    environment:
-      # redis-cli reads this, so the password never appears on the healthcheck command line.
-      REDISCLI_AUTH: ${REDIS_PASSWORD}
-    volumes:
-      - redis_data:/data
-      - ./infrastructure/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
+# ভাগ ২: ভিড় আর বড় ডাটা ঠেকানো  # উদাহরণ: দোকানে একজন মানুষ ১ মিনিটে ৩০০ বার ঢুকে বের হলে সন্দেহজনক। ৩০০ পার হলেই তাকে আটকে দেওয়া হবে। আর কেউ ১০০ কেজির বস্তা নিয়ে ঢুকতে চাইলে দরজায় আটকাবে।
+  TRUST_PROXY: ${TRUST_PROXY:-true}               # মাঝের প্রতিনিধি (Kong) যা বলে "আসল ব্যক্তি কে", তা বিশ্বাস করবে
+  RATE_LIMIT_TTL_MS: ${RATE_LIMIT_TTL_MS:-60000}  # গণনার সময়: ৬০,০০০ মিলিসেকেন্ড = ১ মিনিট
+  RATE_LIMIT_LIMIT: ${RATE_LIMIT_LIMIT:-300}      # ১ মিনিটে একজন সর্বোচ্চ ৩০০ বার request পাঠাতে পারবে
+  BODY_LIMIT: ${BODY_LIMIT:-512kb}                # একবারে ৫১২ KB এর বেশি ডাটা পাঠানো যাবে না
 
-  rabbitmq:
-    image: rabbitmq:3.13-management-alpine
-    <<: *service-common
-    mem_limit: ${RABBITMQ_MEM_LIMIT:-768m}
-    networks: [data]
-    hostname: ecom-rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
-      RABBITMQ_DEFAULT_VHOST: "/"
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-      - ./infrastructure/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
-      - ./infrastructure/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
-    ports:
-      - "${RABBITMQ_BIND_ADDR:-127.0.0.1}:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
-    healthcheck:
-      test: ["CMD-SHELL", "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 40s
+# ভাগ ৩: নিরাপদ রাখা
+  SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}      # API এর ম্যানুয়াল পাতা দেখাবে না (আসল server এ দরকার নেই)
+  CORS_ORIGINS: ${CORS_ORIGINS:-}                 # কোন ওয়েবসাইট browser থেকে ডাকতে পারবে তার তালিকা। ফাঁকা = কেউ না
 
-  redisinsight:
-    image: redis/redisinsight:${REDISINSIGHT_TAG:-latest}   # pin REDISINSIGHT_TAG in .env
-    <<: *service-common
-    profiles: [debug]
-    mem_limit: 256m
-    networks: [data]            # data only: it has no reason to sit on the edge network
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      RI_APP_PORT: 5540
-      RI_REDIS_HOST: redis
-      RI_REDIS_PORT: 6379
-      RI_REDIS_PASSWORD: ${REDIS_PASSWORD}
-      RI_REDIS_ALIAS: ecom-cache
-    volumes:
-      - redisinsight_data:/data
-    ports:
-      - "${REDISINSIGHT_BIND_ADDR:-127.0.0.1}:${REDISINSIGHT_PORT:-5540}:5540"
+# ভাগ ৪: token (প্রবেশপত্র) এর সেটিং # উদাহরণ: সিনেমা হলের টিকিট। টিকিটে লেখা থাকে কে দিয়েছে (issuer) আর কোন হলের জন্য (audience)। গেটে গিয়ে মিলিয়ে দেখা হয়, মিললে ঢুকতে দেয়।
+  JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?JWT_PUBLIC_KEY is required - run npm run keys:generate}  # প্রবেশপত্র আসল কিনা মেলানোর চাবি। অবশ্যই লাগবে
+  JWT_ISSUER: ${JWT_ISSUER:-ecom-auth}            # প্রবেশপত্র কে দিয়েছে তার নাম: "ecom-auth"
+  JWT_AUDIENCE: ${JWT_AUDIENCE:-ecom-api}         # প্রবেশপত্র কার জন্য তার নাম: "ecom-api"
 
-  kong:
-    image: kong:3.9
-    <<: *service-common
-    mem_limit: ${KONG_MEM_LIMIT:-512m}
-    networks: [edge, gateway]
-    depends_on:
+# ভাগ ৫: Redis (দ্রুত মনে রাখার খাতা) # উদাহরণ (prefix): আলমারির সব জামায় আপনার নামের ট্যাগ লাগালে অন্যের জামার সাথে গুলিয়ে যাবে না। ecom:user:5 দেখলেই বোঝা যায় এটা এই প্রজেক্টের।
+  REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0  # Redis এর ঠিকানা: password দিয়ে, কর্মীর নাম "redis", দরজা 6379। password অবশ্যই লাগবে
+  REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-ecom}     # Redis এ রাখা সব জিনিসের নামের শুরুতে "ecom" বসবে
+  CACHE_ENABLED: ${CACHE_ENABLED:-true}           # দ্রুত মনে রাখার ব্যবস্থা চালু
+
+# ভাগ ৬: RabbitMQ (ডাকঘর)
+  RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672/%2F  # ডাকঘরের ঠিকানা: নাম:password@কর্মী:দরজা/ভাগ। নাম আর password অবশ্যই লাগবে, শেষের %2F মানে RabbitMQ এর default ভাগে যাও।
+  RABBITMQ_ENABLED: ${RABBITMQ_ENABLED:-true}     # ডাকঘর ব্যবহার চালু
+# শেষের /%2F মানে ডাকঘরের ভাগের নাম “/”। URL এ “/” সরাসরি লিখলে গোলমাল হয়, তাই %2F লেখা হয়। ইংরেজি comment এ বলা আছে, আগে একই নাম দুই কাজে লাগত বলে অমিল হতো, তাই এখন স্থির করে দেওয়া।
+
+# ভাগ ৭: শেষ দুই লাইন
+  INTERNAL_API_KEY: ${INTERNAL_API_KEY:?INTERNAL_API_KEY is required}  # কর্মীরা নিজেদের মধ্যে কথা বলার গোপন চাবি। অবশ্যই লাগবে
+  RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}         # চালু হওয়ার সময় ডাটাবেসের table বানানো বা বদলানোর কাজ নিজে করবে
+
+
+
+
+# ---------------------------------------------------------------------
+# SERVICES – আসল container গুলো
+# ---------------------------------------------------------------------
+services:                     # সব container এর তালিকা শুরু
+
+  # ============================ POSTGRES ============================
+  postgres:                   # service নাম; অন্য container এ host নাম হিসেবে "postgres" লিখে পৌঁছানো যায়
+    image: postgres:16-alpine # PostgreSQL ১৬, alpine Linux ভিত্তিক (ছোট আকারের image)
+    <<: *service-common       # উপরের service-common ব্লকের সব সেটিং (restart, logging...) এখানে merge করা হলো
+    mem_limit: ${POSTGRES_MEM_LIMIT:-1g}   # সর্বোচ্চ RAM ১ GB; এর বেশি নিতে গেলে container kill হবে
+    networks: [data]          # শুধু data network এ; edge এ নেই, তাই Kong সরাসরি DB তে পৌঁছাতে পারে না
+    environment:              # container এর environment variable
+      POSTGRES_DB: ${POSTGRES_DB:-ecommerce}      # শুরুতে যে database বানাবে তার নাম
+      POSTGRES_USER: ${POSTGRES_USER:-ecom_owner} # superuser/owner এর নাম
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}  # owner এর password (বাধ্যতামূলক)
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?AUTH_DB_PASSWORD is required}      # auth_service নামের DB user এর password (init script এ ব্যবহার হয়)
+      ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD:?ADMIN_DB_PASSWORD is required}   # admin_service user এর password
+      PUBLIC_DB_PASSWORD: ${PUBLIC_DB_PASSWORD:?PUBLIC_DB_PASSWORD is required} # public_service user এর password
+      POSTGRES_INITDB_ARGS: "--data-checksums"    # প্রথমবার DB বানানোর সময় data checksum চালু; disk corruption ধরা পড়ে
+    volumes:                  # storage mount
+      - postgres_data:/var/lib/postgresql/data    # named volume কে Postgres এর data folder এ লাগানো (data স্থায়ী)
+      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro  # init SQL/script folder; প্রথমবার চালুর সময় একবার চলে; :ro = শুধু পড়ার জন্য
+    healthcheck:              # container সুস্থ কিনা নিয়মিত পরীক্ষা
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ecom_owner} -d ${POSTGRES_DB:-ecommerce}"]  # pg_isready দিয়ে DB connection নিচ্ছে কিনা দেখে
+      interval: 10s           # প্রতি ১০ সেকেন্ডে check
+      timeout: 5s             # ৫ সেকেন্ডের মধ্যে উত্তর না এলে fail ধরা হবে
+      retries: 10             # পরপর ১০ বার fail করলে "unhealthy"
+      start_period: 20s       # শুরুর ২০ সেকেন্ড fail গুনবে না (boot হতে সময় লাগে)
+
+  # ============================== REDIS =============================
+  redis:                      # service নাম "redis"
+    image: redis:7-alpine     # Redis ৭, alpine সংস্করণ
+    <<: *service-common       # common সেটিং merge
+    mem_limit: ${REDIS_MEM_LIMIT:-384m}   # সর্বোচ্চ RAM ৩৮৪ MB
+    networks: [data]          # শুধু data network
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]  # config ফাইল দিয়ে redis চালায় এবং --requirepass দিয়ে password বাধ্যতামূলক করে
+    environment:              # environment variable
+      REDISCLI_AUTH: ${REDIS_PASSWORD}    # redis-cli এর জন্য auto password
+    volumes:                  # storage mount
+      - redis_data:/data      # persistent data folder
+      - ./infrastructure/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro  # নিজের redis.conf ফাইল container এ read-only দিয়ে ঢোকানো
+    healthcheck:              # স্বাস্থ্য পরীক্ষা
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]   # ping পাঠায়; PONG ফিরলে সুস্থ
+      interval: 10s           # প্রতি ১০ সেকেন্ডে
+      timeout: 5s             # ৫ সেকেন্ড timeout
+      retries: 10             # ১০ বার fail হলে unhealthy
+      start_period: 10s       # প্রথম ১০ সেকেন্ড ছাড়
+
+  # ============================ RABBITMQ ============================
+  rabbitmq:                   # message broker service
+    image: rabbitmq:3.13-management-alpine   # RabbitMQ 3.13 + management web UI, alpine
+    <<: *service-common       # common সেটিং merge
+    mem_limit: ${RABBITMQ_MEM_LIMIT:-768m}   # সর্বোচ্চ RAM ৭৬৮ MB
+    networks: [data]          # data network এ
+    hostname: ecom-rabbitmq   # container এর ভেতরের hostname নির্দিষ্ট; RabbitMQ data এই নামের সাথে বাঁধা থাকে, তাই স্থির রাখা জরুরি
+    environment:              # environment variable
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}          # প্রথম admin user এর নাম
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}  # তার password
+      RABBITMQ_DEFAULT_VHOST: "/"   # default virtual host "/" (RabbitMQ এর logical ভাগ)
+    volumes:                  # storage mount
+      - rabbitmq_data:/var/lib/rabbitmq   # queue/data স্থায়ী রাখা
+      - ./infrastructure/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro      # নিজের config, read-only
+      - ./infrastructure/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro  # কোন কোন plugin চালু থাকবে তার তালিকা
+    ports:                    # host এ port publish
+      - "${RABBITMQ_BIND_ADDR:-127.0.0.1}:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"  # host এর 127.0.0.1:15672 → container এর 15672 (management UI); শুধু localhost এ, বাইরে থেকে নয়
+    healthcheck:              # স্বাস্থ্য পরীক্ষা
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms"]  # RabbitMQ চলছে এবং কোনো alarm (যেমন disk/memory সমস্যা) নেই কিনা
+      interval: 15s           # প্রতি ১৫ সেকেন্ডে
+      timeout: 10s            # ১০ সেকেন্ড timeout
+      retries: 10             # ১০ বার fail হলে unhealthy
+      start_period: 40s       # RabbitMQ ধীরে boot হয়, তাই ৪০ সেকেন্ড সময় দেওয়া
+
+  # =========================== REDISINSIGHT =========================
+  redisinsight:               # Redis দেখার GUI tool (শুধু debug এর জন্য)
+    image: redis/redisinsight:${REDISINSIGHT_TAG:-latest}   # pin REDISINSIGHT_TAG in .env  ← .env এ নির্দিষ্ট version দিন, "latest" ঝুঁকিপূর্ণ
+    <<: *service-common       # common সেটিং merge
+    profiles: [debug]         # শুধু --profile debug দিলে চালু হবে; সাধারণ up এ নয়
+    mem_limit: 256m           # সর্বোচ্চ RAM ২৫৬ MB
+    networks: [data]          # data only: it has no reason to sit on the edge network ← শুধু data network; edge এ থাকার দরকার নেই
+    depends_on:               # অন্য service এর উপর নির্ভরতা
+      redis:                  # redis এর উপর নির্ভর
+        condition: service_healthy   # redis "healthy" হলে তবেই এটি শুরু হবে
+    environment:              # environment variable
+      RI_APP_PORT: 5540       # RedisInsight নিজে যে port এ শুনবে
+      RI_REDIS_HOST: redis    # যে Redis এ connect করবে তার host (service নাম)
+      RI_REDIS_PORT: 6379     # Redis এর port
+      RI_REDIS_PASSWORD: ${REDIS_PASSWORD}   # Redis এর password
+      RI_REDIS_ALIAS: ecom-cache             # UI তে এই connection কে যে নামে দেখাবে
+    volumes:                  # storage
+      - redisinsight_data:/data   # RedisInsight এর settings স্থায়ী রাখা
+    ports:                    # port publish
+      - "${REDISINSIGHT_BIND_ADDR:-127.0.0.1}:${REDISINSIGHT_PORT:-5540}:5540"   # শুধু localhost:5540 এ খোলা (নিরাপদ)
+
+  # ============================== KONG ==============================
+  kong:                       # API Gateway; সব বাইরের request প্রথমে এখানে আসে
+    image: kong:3.9           # Kong ৩.৯
+    <<: *service-common       # common সেটিং merge
+    mem_limit: ${KONG_MEM_LIMIT:-512m}   # সর্বোচ্চ RAM ৫১২ MB
+    networks: [edge, gateway] # edge (backend service দের সাথে কথা বলতে) ও gateway (frontend এর সাথে) দুই network এ
+    depends_on:               # তিনটি service healthy হলে তবেই Kong চালু
       auth-service:
-        condition: service_healthy
+        condition: service_healthy   # auth-service সুস্থ হওয়া পর্যন্ত অপেক্ষা
       admin-service:
-        condition: service_healthy
+        condition: service_healthy   # admin-service সুস্থ হওয়া পর্যন্ত অপেক্ষা
       public-service:
-        condition: service_healthy
-    environment:
-      KONG_DATABASE: "off"
-      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml
-      KONG_PROXY_ACCESS_LOG: /dev/stdout
-      KONG_PROXY_ERROR_LOG: /dev/stderr
-      KONG_ADMIN_ACCESS_LOG: /dev/stdout
-      KONG_ADMIN_ERROR_LOG: /dev/stderr
-      KONG_LOG_LEVEL: ${KONG_LOG_LEVEL:-notice}
-      # The Admin API is unauthenticated and, in DB-less mode, POST /config replaces the whole
-      # gateway config. Every backend container shares the edge network with Kong, so keep it
-      # off here. docker-compose.dev.yml turns it back on for local work.
-      KONG_ADMIN_LISTEN: "off"
-      KONG_ADMIN_GUI_LISTEN: "off"
-      KONG_PROXY_LISTEN: 0.0.0.0:8000
-      KONG_NGINX_WORKER_PROCESSES: ${KONG_WORKERS:-2}
-      KONG_PLUGINS: bundled
-      # Kong is exposed directly by default, so trust no forwarded headers (loopback only).
-      # Behind a host Nginx/Caddy set KONG_TRUSTED_IPS=172.16.0.0/12 (Docker bridge gateway);
-      # behind Cloudflare set KONG_REAL_IP_HEADER=CF-Connecting-IP and Cloudflare's ranges.
-      KONG_REAL_IP_HEADER: ${KONG_REAL_IP_HEADER:-X-Forwarded-For}
-      KONG_TRUSTED_IPS: ${KONG_TRUSTED_IPS:-127.0.0.1}
-    volumes:
-      - ./infrastructure/kong/kong.yml:/kong/declarative/kong.yml:ro
-    ports:
-      # Loopback by default. Docker-published ports bypass ufw, so set KONG_BIND_ADDR=0.0.0.0
-      # only to expose Kong directly; in production put Caddy/Nginx (TLS) in front.
-      - "${KONG_BIND_ADDR:-127.0.0.1}:${KONG_PROXY_PORT:-8000}:8000"
-    healthcheck:
-      test: ["CMD", "kong", "health"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 20s
+        condition: service_healthy   # public-service সুস্থ হওয়া পর্যন্ত অপেক্ষা
+    environment:              # Kong এর সব সেটিং KONG_ prefix এর environment variable দিয়ে
+      KONG_DATABASE: "off"    # DB-less mode: কোনো database লাগে না, config আসে YAML ফাইল থেকে
+      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml   # DB-less mode এর config ফাইলের পথ (container এর ভেতরে)
+      KONG_PROXY_ACCESS_LOG: /dev/stdout   # proxy এর access log stdout এ → docker logs এ দেখা যায়
+      KONG_PROXY_ERROR_LOG: /dev/stderr    # proxy এর error log stderr এ
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout   # Admin API এর access log stdout এ
+      KONG_ADMIN_ERROR_LOG: /dev/stderr    # Admin API এর error log stderr এ
+      KONG_LOG_LEVEL: ${KONG_LOG_LEVEL:-notice}   # log এর স্তর; default notice
+      KONG_ADMIN_LISTEN: "off"       # Admin API একদম বন্ধ (নিরাপত্তা)
+      KONG_ADMIN_GUI_LISTEN: "off"   # Admin GUI বন্ধ
+      KONG_PROXY_LISTEN: 0.0.0.0:8000   # proxy সব interface এ port 8000 এ শুনবে (container এর ভেতরে)
+      KONG_NGINX_WORKER_PROCESSES: ${KONG_WORKERS:-2}   # nginx worker process সংখ্যা (default ২)
+      KONG_PLUGINS: bundled   # Kong এর সাথে আসা সব built-in plugin চালু
+      KONG_REAL_IP_HEADER: ${KONG_REAL_IP_HEADER:-X-Forwarded-For}   # client এর আসল IP কোন header থেকে নেবে
+      KONG_TRUSTED_IPS: ${KONG_TRUSTED_IPS:-127.0.0.1}   # কোন IP গুলোর পাঠানো ঐ header বিশ্বাসযোগ্য
+    volumes:                  # storage
+      - ./infrastructure/kong/kong.yml:/kong/declarative/kong.yml:ro   # Kong এর route/service config ফাইল read-only mount
+    ports:                    # port publish
+      - "${KONG_BIND_ADDR:-127.0.0.1}:${KONG_PROXY_PORT:-8000}:8000"   # host 127.0.0.1:8000 → container 8000
+    healthcheck:              # স্বাস্থ্য পরীক্ষা
+      test: ["CMD", "kong", "health"]   # Kong এর নিজস্ব health কমান্ড
+      interval: 15s           # প্রতি ১৫ সেকেন্ডে
+      timeout: 10s            # ১০ সেকেন্ড timeout
+      retries: 10             # ১০ বার fail হলে unhealthy
+      start_period: 20s       # শুরুর ২০ সেকেন্ড ছাড়
 
-  auth-service:
-    build:
-      context: .
-      dockerfile: services/auth/Dockerfile
-      target: runtime
-    image: ecom/auth-service:${IMAGE_TAG:-local}
-    pull_policy: build
-    <<: [*service-common, *app-hardening]
-    mem_limit: ${APP_MEM_LIMIT:-512m}
-    networks: [data, edge]
-    depends_on:
+  # ========================== AUTH-SERVICE ==========================
+  auth-service:               # login/register/token দেওয়ার service
+    build:                    # নিজের image বানানোর নির্দেশ
+      context: .              # build context = বর্তমান ফোল্ডার (পুরো repo)
+      dockerfile: services/auth/Dockerfile   # কোন Dockerfile ব্যবহার হবে
+      target: runtime         # multi-stage Dockerfile এর "runtime" stage পর্যন্ত build (ছোট, পরিষ্কার final image)
+    image: ecom/auth-service:${IMAGE_TAG:-local}   # build করা image এর নাম ও tag
+    pull_policy: build        # registry থেকে pull না করে সবসময় local এ build করবে
+    <<: [*service-common, *app-hardening]   # দুটো ব্লকই merge: common সেটিং + hardening (cap_drop, read_only, tmpfs)
+    mem_limit: ${APP_MEM_LIMIT:-512m}   # সর্বোচ্চ RAM ৫১২ MB
+    networks: [data, edge]    # data (DB/Redis/RabbitMQ এ যেতে) ও edge (Kong এর কাছ থেকে request নিতে)
+    depends_on:               # নির্ভরতা
       postgres:
-        condition: service_healthy
+        condition: service_healthy   # postgres সুস্থ হলে শুরু
       redis:
-        condition: service_healthy
+        condition: service_healthy   # redis সুস্থ হলে
       rabbitmq:
-        condition: service_healthy
-    environment:
-      <<: *service-env
-      SERVICE_NAME: auth-service
-      PORT: 3001
-      DATABASE_URL: postgresql://auth_service:${AUTH_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-ecommerce}
-      DATABASE_POOL_MAX: "10"
-      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?JWT_PRIVATE_KEY is required - run npm run keys:generate}
-      ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-600}
-      REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-1209600}
-      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:?SUPER_ADMIN_EMAIL is required}
-      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:?SUPER_ADMIN_PASSWORD is required}
-      SUPER_ADMIN_NAME: ${SUPER_ADMIN_NAME:-Platform Owner}
-      SUPER_ADMIN_ROTATE_PASSWORD: ${SUPER_ADMIN_ROTATE_PASSWORD:-false}
-      LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-8}
-      LOGIN_LOCKOUT_MINUTES: ${LOGIN_LOCKOUT_MINUTES:-15}
-      THROTTLE_WINDOW_MS: ${THROTTLE_WINDOW_MS:-60000}
-      THROTTLE_REGISTER_LIMIT: ${THROTTLE_REGISTER_LIMIT:-5}
-      THROTTLE_LOGIN_LIMIT: ${THROTTLE_LOGIN_LIMIT:-10}
-      THROTTLE_REFRESH_LIMIT: ${THROTTLE_REFRESH_LIMIT:-30}
-      THROTTLE_PASSWORD_LIMIT: ${THROTTLE_PASSWORD_LIMIT:-5}
-      THROTTLE_FORGOT_LIMIT: ${THROTTLE_FORGOT_LIMIT:-3}
-      RUN_SEED: ${RUN_SEED:-false}
+        condition: service_healthy   # rabbitmq সুস্থ হলে
+    environment:              # environment variable
+      <<: *service-env        # উপরের common env ব্লকের সব variable merge
+      SERVICE_NAME: auth-service   # service এর নাম (log ও identification এ)
+      PORT: 3001              # app এই port এ শুনবে
+      DATABASE_URL: postgresql://auth_service:${AUTH_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-ecommerce}  # DB connection: user=auth_service, নিজের password, host=postgres
+      DATABASE_POOL_MAX: "10" # সর্বোচ্চ ১০টি DB connection pool এ
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?JWT_PRIVATE_KEY is required - run npm run keys:generate}  # token sign করার private key; শুধু auth-service এর কাছে থাকে
+      ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-600}       # access token এর মেয়াদ ৬০০ সেকেন্ড = ১০ মিনিট
+      REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-1209600} # refresh token এর মেয়াদ ১২,০৯,৬০০ সেকেন্ড = ১৪ দিন
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:?SUPER_ADMIN_EMAIL is required}        # প্রথম super admin এর email
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:?SUPER_ADMIN_PASSWORD is required}  # তার password
+      SUPER_ADMIN_NAME: ${SUPER_ADMIN_NAME:-Platform Owner}   # তার নাম; default "Platform Owner"
+      SUPER_ADMIN_ROTATE_PASSWORD: ${SUPER_ADMIN_ROTATE_PASSWORD:-false}   # true হলে restart এ super admin এর password নতুন মানে বদলে যাবে
+      LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-8}       # ভুল login এর সর্বোচ্চ চেষ্টা ৮ বার
+      LOGIN_LOCKOUT_MINUTES: ${LOGIN_LOCKOUT_MINUTES:-15}  # সীমা পার হলে ১৫ মিনিট account lock
+      THROTTLE_WINDOW_MS: ${THROTTLE_WINDOW_MS:-60000}   # throttle এর সময়-জানালা ১ মিনিট
+      THROTTLE_REGISTER_LIMIT: ${THROTTLE_REGISTER_LIMIT:-5}   # register: মিনিটে সর্বোচ্চ ৫
+      THROTTLE_LOGIN_LIMIT: ${THROTTLE_LOGIN_LIMIT:-10}        # login: মিনিটে ১০
+      THROTTLE_REFRESH_LIMIT: ${THROTTLE_REFRESH_LIMIT:-30}    # token refresh: মিনিটে ৩০
+      THROTTLE_PASSWORD_LIMIT: ${THROTTLE_PASSWORD_LIMIT:-5}   # password পরিবর্তন: মিনিটে ৫
+      THROTTLE_FORGOT_LIMIT: ${THROTTLE_FORGOT_LIMIT:-3}       # forgot-password: মিনিটে ৩
+      RUN_SEED: ${RUN_SEED:-false}   # startup এ নমুনা (seed) data ঢোকাবে কিনা; production এ false
 
-  admin-service:
-    build:
-      context: .
-      dockerfile: services/admin/Dockerfile
-      target: runtime
-    image: ecom/admin-service:${IMAGE_TAG:-local}
-    pull_policy: build
-    <<: [*service-common, *app-hardening]
-    mem_limit: ${APP_MEM_LIMIT:-512m}
-    networks: [data, edge]
-    depends_on:
+  # ========================== ADMIN-SERVICE =========================
+  admin-service:              # product/order/invoice ম্যানেজমেন্ট service
+    build:                    # build নির্দেশ
+      context: .              # পুরো repo context
+      dockerfile: services/admin/Dockerfile   # admin এর Dockerfile
+      target: runtime         # runtime stage
+    image: ecom/admin-service:${IMAGE_TAG:-local}   # image নাম
+    pull_policy: build        # সবসময় build
+    <<: [*service-common, *app-hardening]   # common + hardening merge
+    mem_limit: ${APP_MEM_LIMIT:-512m}   # RAM সীমা
+    networks: [data, edge]    # data ও edge network
+    depends_on:               # নির্ভরতা
       postgres:
-        condition: service_healthy
+        condition: service_healthy   # postgres সুস্থ
       redis:
-        condition: service_healthy
+        condition: service_healthy   # redis সুস্থ
       rabbitmq:
-        condition: service_healthy
+        condition: service_healthy   # rabbitmq সুস্থ
       auth-service:
-        condition: service_healthy
-    environment:
-      <<: *service-env
-      SERVICE_NAME: admin-service
-      PORT: 3002
-      DATABASE_URL: postgresql://admin_service:${ADMIN_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-ecommerce}
-      DATABASE_POOL_MAX: "15"
-      AUTH_SERVICE_URL: http://auth-service:3001
-      INVOICE_STORAGE_DIR: /app/storage/invoices
-      INVOICE_COMPANY_NAME: ${INVOICE_COMPANY_NAME:-Aurelia Commerce Ltd}
-      INVOICE_COMPANY_ADDRESS: ${INVOICE_COMPANY_ADDRESS:-House 42, Road 11, Banani, Dhaka 1213}
-      INVOICE_COMPANY_EMAIL: ${INVOICE_COMPANY_EMAIL:-billing@aurelia.example}
-      INVOICE_COMPANY_REGISTRATION: ${INVOICE_COMPANY_REGISTRATION:-UEN 202400123X}
-      INVOICE_CURRENCY: ${INVOICE_CURRENCY:-BDT}
-      INVOICE_TAX_RATE: ${INVOICE_TAX_RATE:-0}
-      SHIPPING_FLAT_RATE: ${SHIPPING_FLAT_RATE:-120}
-      FREE_SHIPPING_THRESHOLD: ${FREE_SHIPPING_THRESHOLD:-5000}
-      OUTBOX_POLL_INTERVAL_MS: ${OUTBOX_POLL_INTERVAL_MS:-1000}
-      OUTBOX_BATCH_SIZE: ${OUTBOX_BATCH_SIZE:-50}
-      RUN_SEED: ${RUN_SEED:-false}
-    volumes:
-      - invoice_data:/app/storage/invoices
+        condition: service_healthy   # auth-service সুস্থ (admin, auth কে call করে)
+    environment:              # environment variable
+      <<: *service-env        # common env merge
+      SERVICE_NAME: admin-service   # service নাম
+      PORT: 3002              # port 3002
+      DATABASE_URL: postgresql://admin_service:${ADMIN_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-ecommerce}  # admin_service user দিয়ে DB connection
+      DATABASE_POOL_MAX: "15" # সর্বোচ্চ ১৫টি DB connection
+      AUTH_SERVICE_URL: http://auth-service:3001   # auth-service এর ভেতরের URL (service নাম দিয়ে)
+      INVOICE_STORAGE_DIR: /app/storage/invoices   # invoice ফাইল container এর যে ফোল্ডারে সেভ হবে (নিচের volume এর সাথে মেলে)
+      INVOICE_COMPANY_NAME: ${INVOICE_COMPANY_NAME:-Aurelia Commerce Ltd}   # invoice এ কোম্পানির নাম
+      INVOICE_COMPANY_ADDRESS: ${INVOICE_COMPANY_ADDRESS:-House 42, Road 11, Banani, Dhaka 1213}   # invoice এ ঠিকানা
+      INVOICE_COMPANY_EMAIL: ${INVOICE_COMPANY_EMAIL:-billing@aurelia.example}   # invoice এ email
+      INVOICE_COMPANY_REGISTRATION: ${INVOICE_COMPANY_REGISTRATION:-UEN 202400123X}   # কোম্পানির registration নম্বর
+      INVOICE_CURRENCY: ${INVOICE_CURRENCY:-BDT}   # মুদ্রা: BDT (টাকা)
+      INVOICE_TAX_RATE: ${INVOICE_TAX_RATE:-0}     # কর হার (শতাংশ); default ০
+      SHIPPING_FLAT_RATE: ${SHIPPING_FLAT_RATE:-120}   # স্থির shipping খরচ ১২০ টাকা
+      FREE_SHIPPING_THRESHOLD: ${FREE_SHIPPING_THRESHOLD:-5000}   # ৫০০০ টাকা বা বেশি কিনলে shipping ফ্রি
+      OUTBOX_POLL_INTERVAL_MS: ${OUTBOX_POLL_INTERVAL_MS:-1000}   # outbox pattern: প্রতি ১ সেকেন্ডে DB এর outbox table দেখে event RabbitMQ তে পাঠায়
+      OUTBOX_BATCH_SIZE: ${OUTBOX_BATCH_SIZE:-50}   # একবারে সর্বোচ্চ ৫০টি event প্রক্রিয়া
+      RUN_SEED: ${RUN_SEED:-false}   # seed data চালাবে কিনা
+    volumes:                  # storage
+      - invoice_data:/app/storage/invoices   # invoice ফাইল named volume এ রাখা (container মুছলেও থাকবে)। read_only হলেও এই volume এ লেখা যায়
 
-  public-service:
-    build:
-      context: .
-      dockerfile: services/public/Dockerfile
-      target: runtime
-    image: ecom/public-service:${IMAGE_TAG:-local}
-    pull_policy: build
-    <<: [*service-common, *app-hardening]
-    mem_limit: ${APP_MEM_LIMIT:-512m}
-    networks: [data, edge]
-    depends_on:
+  # ========================== PUBLIC-SERVICE ========================
+  public-service:             # গ্রাহকদের জন্য catalog/public API service
+    build:                    # build নির্দেশ
+      context: .              # পুরো repo context
+      dockerfile: services/public/Dockerfile   # public এর Dockerfile
+      target: runtime         # runtime stage
+    image: ecom/public-service:${IMAGE_TAG:-local}   # image নাম
+    pull_policy: build        # সবসময় build
+    <<: [*service-common, *app-hardening]   # common + hardening merge
+    mem_limit: ${APP_MEM_LIMIT:-512m}   # RAM সীমা
+    networks: [data, edge]    # data ও edge network
+    depends_on:               # নির্ভরতা
       postgres:
-        condition: service_healthy
+        condition: service_healthy   # postgres সুস্থ
       redis:
-        condition: service_healthy
+        condition: service_healthy   # redis সুস্থ
       rabbitmq:
-        condition: service_healthy
+        condition: service_healthy   # rabbitmq সুস্থ
       admin-service:
-        condition: service_healthy
-    environment:
-      <<: *service-env
-      SERVICE_NAME: public-service
-      PORT: 3003
-      DATABASE_URL: postgresql://public_service:${PUBLIC_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-ecommerce}
-      DATABASE_POOL_MAX: "15"
-      ADMIN_SERVICE_URL: http://admin-service:3002
-      AUTH_SERVICE_URL: http://auth-service:3001
-      CATALOG_CACHE_TTL_SECONDS: ${CATALOG_CACHE_TTL_SECONDS:-120}
-      RUN_SEED: ${RUN_SEED:-false}
+        condition: service_healthy   # admin-service সুস্থ (public, admin কে call করে)
+    environment:              # environment variable
+      <<: *service-env        # common env merge
+      SERVICE_NAME: public-service   # service নাম
+      PORT: 3003              # port 3003
+      DATABASE_URL: postgresql://public_service:${PUBLIC_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-ecommerce}  # public_service user দিয়ে DB connection
+      DATABASE_POOL_MAX: "15" # সর্বোচ্চ ১৫টি DB connection
+      ADMIN_SERVICE_URL: http://admin-service:3002   # admin-service এর ভেতরের URL
+      AUTH_SERVICE_URL: http://auth-service:3001     # auth-service এর ভেতরের URL
+      CATALOG_CACHE_TTL_SECONDS: ${CATALOG_CACHE_TTL_SECONDS:-120}   # catalog data Redis এ ১২০ সেকেন্ড (২ মিনিট) cache হবে
+      RUN_SEED: ${RUN_SEED:-false}   # seed data চালাবে কিনা
 
 
 
 
 
 
+
+################ main compose file ######################
 
 # name: ecom-backend
+
+# # Production-safe base.
+# #   prod: docker compose up -d --build
+# #   dev : docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+# # Debug-only tools (RedisInsight) sit behind a profile:
+# #   docker compose --profile debug up -d redisinsight
 
 # networks:
 #   edge:
 #     driver: bridge
 #   data:
+#     driver: bridge
+#   # Shared with the frontend stack. ONLY Kong joins it, so the Next.js servers can reach the
+#   # gateway by name (http://kong:8000) without Kong being published on any host address.
+#   gateway:
+#     name: ecom-gateway
 #     driver: bridge
 
 # volumes:
@@ -341,11 +377,22 @@ services:
 # x-service-common: &service-common
 #   restart: unless-stopped
 #   stop_grace_period: 30s
+#   security_opt:
+#     - no-new-privileges:true
 #   logging:
 #     driver: json-file
 #     options:
 #       max-size: "10m"
 #       max-file: "3"
+
+# # Applied to the three Node services only (non-root, ports > 1024).
+# x-app-hardening: &app-hardening
+#   cap_drop: [ALL]
+#   # Needs the patched docker/entrypoint.sh (calls node_modules/.bin/knex directly, no npx/npm
+#   # at runtime). If a container logs EROFS on startup, comment this line out and report it.
+#   read_only: true
+#   tmpfs:
+#     - /tmp
 
 # x-service-env: &service-env
 #   NODE_ENV: ${NODE_ENV:-production}
@@ -353,9 +400,14 @@ services:
 #   LOG_PRETTY: ${LOG_PRETTY:-false}
 #   API_PREFIX: api
 #   API_VERSION: v1
-#   TRUST_PROXY: "true"
+#   # The app trusts exactly one proxy hop (Kong). If a reverse proxy (Nginx/Caddy) sits in front
+#   # of Kong, the services see that proxy's IP for every request, so the per-IP limits below
+#   # become site-wide limits. In that case raise them in .env; Kong still limits per real client IP.
+#   TRUST_PROXY: ${TRUST_PROXY:-true}
+#   RATE_LIMIT_TTL_MS: ${RATE_LIMIT_TTL_MS:-60000}
+#   RATE_LIMIT_LIMIT: ${RATE_LIMIT_LIMIT:-300}
 #   BODY_LIMIT: ${BODY_LIMIT:-512kb}
-#   SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
+#   SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
 #   CORS_ORIGINS: ${CORS_ORIGINS:-}
 #   JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?JWT_PUBLIC_KEY is required - run npm run keys:generate}
 #   JWT_ISSUER: ${JWT_ISSUER:-ecom-auth}
@@ -363,15 +415,20 @@ services:
 #   REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
 #   REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-ecom}
 #   CACHE_ENABLED: ${CACHE_ENABLED:-true}
-#   RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672${RABBITMQ_VHOST:-/}
+#   # Vhost is fixed to "/" (URL-encoded as %2F). The old ${RABBITMQ_VHOST} was used both as the
+#   # broker vhost name and as the URL path, so any custom value would have mismatched.
+#   RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672/%2F
 #   RABBITMQ_ENABLED: ${RABBITMQ_ENABLED:-true}
 #   INTERNAL_API_KEY: ${INTERNAL_API_KEY:?INTERNAL_API_KEY is required}
+#   # Each service migrates only its own schema, so this is safe with ONE replica per service.
+#   # If you ever scale a service to >1 replica, run migrations as a one-off job instead.
 #   RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
 
 # services:
 #   postgres:
 #     image: postgres:16-alpine
 #     <<: *service-common
+#     mem_limit: ${POSTGRES_MEM_LIMIT:-1g}
 #     networks: [data]
 #     environment:
 #       POSTGRES_DB: ${POSTGRES_DB:-ecommerce}
@@ -394,35 +451,38 @@ services:
 #   redis:
 #     image: redis:7-alpine
 #     <<: *service-common
+#     mem_limit: ${REDIS_MEM_LIMIT:-384m}
 #     networks: [data]
 #     command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
+#     environment:
+#       # redis-cli reads this, so the password never appears on the healthcheck command line.
+#       REDISCLI_AUTH: ${REDIS_PASSWORD}
 #     volumes:
 #       - redis_data:/data
 #       - ./infrastructure/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
 #     healthcheck:
-#       test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+#       test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
 #       interval: 10s
 #       timeout: 5s
 #       retries: 10
 #       start_period: 10s
-#     environment:
-#       REDIS_PASSWORD: ${REDIS_PASSWORD}
 
 #   rabbitmq:
 #     image: rabbitmq:3.13-management-alpine
 #     <<: *service-common
+#     mem_limit: ${RABBITMQ_MEM_LIMIT:-768m}
 #     networks: [data]
 #     hostname: ecom-rabbitmq
 #     environment:
 #       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
 #       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
-#       RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+#       RABBITMQ_DEFAULT_VHOST: "/"
 #     volumes:
 #       - rabbitmq_data:/var/lib/rabbitmq
 #       - ./infrastructure/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
 #       - ./infrastructure/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
 #     ports:
-#       - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+#       - "${RABBITMQ_BIND_ADDR:-127.0.0.1}:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
 #     healthcheck:
 #       test: ["CMD-SHELL", "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms"]
 #       interval: 15s
@@ -431,9 +491,11 @@ services:
 #       start_period: 40s
 
 #   redisinsight:
-#     image: redis/redisinsight:latest
+#     image: redis/redisinsight:${REDISINSIGHT_TAG:-latest}   # pin REDISINSIGHT_TAG in .env
 #     <<: *service-common
-#     networks: [data, edge]
+#     profiles: [debug]
+#     mem_limit: 256m
+#     networks: [data]            # data only: it has no reason to sit on the edge network
 #     depends_on:
 #       redis:
 #         condition: service_healthy
@@ -446,12 +508,13 @@ services:
 #     volumes:
 #       - redisinsight_data:/data
 #     ports:
-#       - "127.0.0.1:${REDISINSIGHT_PORT:-5540}:5540"
+#       - "${REDISINSIGHT_BIND_ADDR:-127.0.0.1}:${REDISINSIGHT_PORT:-5540}:5540"
 
 #   kong:
 #     image: kong:3.9
 #     <<: *service-common
-#     networks: [edge]
+#     mem_limit: ${KONG_MEM_LIMIT:-512m}
+#     networks: [edge, gateway]
 #     depends_on:
 #       auth-service:
 #         condition: service_healthy
@@ -463,24 +526,29 @@ services:
 #       KONG_DATABASE: "off"
 #       KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml
 #       KONG_PROXY_ACCESS_LOG: /dev/stdout
-#       KONG_ADMIN_ACCESS_LOG: /dev/stdout
 #       KONG_PROXY_ERROR_LOG: /dev/stderr
+#       KONG_ADMIN_ACCESS_LOG: /dev/stdout
 #       KONG_ADMIN_ERROR_LOG: /dev/stderr
 #       KONG_LOG_LEVEL: ${KONG_LOG_LEVEL:-notice}
-#       KONG_ADMIN_LISTEN: 0.0.0.0:8001
-#       KONG_ADMIN_GUI_LISTEN: 0.0.0.0:8002
-#       KONG_ADMIN_GUI_URL: http://localhost:${KONG_MANAGER_PORT:-8002}
+#       # The Admin API is unauthenticated and, in DB-less mode, POST /config replaces the whole
+#       # gateway config. Every backend container shares the edge network with Kong, so keep it
+#       # off here. docker-compose.dev.yml turns it back on for local work.
+#       KONG_ADMIN_LISTEN: "off"
+#       KONG_ADMIN_GUI_LISTEN: "off"
 #       KONG_PROXY_LISTEN: 0.0.0.0:8000
 #       KONG_NGINX_WORKER_PROCESSES: ${KONG_WORKERS:-2}
 #       KONG_PLUGINS: bundled
-#       KONG_REAL_IP_HEADER: X-Forwarded-For
-#       KONG_TRUSTED_IPS: 0.0.0.0/0,::/0
+#       # Kong is exposed directly by default, so trust no forwarded headers (loopback only).
+#       # Behind a host Nginx/Caddy set KONG_TRUSTED_IPS=172.16.0.0/12 (Docker bridge gateway);
+#       # behind Cloudflare set KONG_REAL_IP_HEADER=CF-Connecting-IP and Cloudflare's ranges.
+#       KONG_REAL_IP_HEADER: ${KONG_REAL_IP_HEADER:-X-Forwarded-For}
+#       KONG_TRUSTED_IPS: ${KONG_TRUSTED_IPS:-127.0.0.1}
 #     volumes:
 #       - ./infrastructure/kong/kong.yml:/kong/declarative/kong.yml:ro
 #     ports:
-#       - "${KONG_PROXY_PORT:-8000}:8000"
-#       - "127.0.0.1:${KONG_ADMIN_PORT:-8001}:8001"
-#       - "127.0.0.1:${KONG_MANAGER_PORT:-8002}:8002"
+#       # Loopback by default. Docker-published ports bypass ufw, so set KONG_BIND_ADDR=0.0.0.0
+#       # only to expose Kong directly; in production put Caddy/Nginx (TLS) in front.
+#       - "${KONG_BIND_ADDR:-127.0.0.1}:${KONG_PROXY_PORT:-8000}:8000"
 #     healthcheck:
 #       test: ["CMD", "kong", "health"]
 #       interval: 15s
@@ -495,7 +563,8 @@ services:
 #       target: runtime
 #     image: ecom/auth-service:${IMAGE_TAG:-local}
 #     pull_policy: build
-#     <<: *service-common
+#     <<: [*service-common, *app-hardening]
+#     mem_limit: ${APP_MEM_LIMIT:-512m}
 #     networks: [data, edge]
 #     depends_on:
 #       postgres:
@@ -519,6 +588,12 @@ services:
 #       SUPER_ADMIN_ROTATE_PASSWORD: ${SUPER_ADMIN_ROTATE_PASSWORD:-false}
 #       LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-8}
 #       LOGIN_LOCKOUT_MINUTES: ${LOGIN_LOCKOUT_MINUTES:-15}
+#       THROTTLE_WINDOW_MS: ${THROTTLE_WINDOW_MS:-60000}
+#       THROTTLE_REGISTER_LIMIT: ${THROTTLE_REGISTER_LIMIT:-5}
+#       THROTTLE_LOGIN_LIMIT: ${THROTTLE_LOGIN_LIMIT:-10}
+#       THROTTLE_REFRESH_LIMIT: ${THROTTLE_REFRESH_LIMIT:-30}
+#       THROTTLE_PASSWORD_LIMIT: ${THROTTLE_PASSWORD_LIMIT:-5}
+#       THROTTLE_FORGOT_LIMIT: ${THROTTLE_FORGOT_LIMIT:-3}
 #       RUN_SEED: ${RUN_SEED:-false}
 
 #   admin-service:
@@ -528,7 +603,8 @@ services:
 #       target: runtime
 #     image: ecom/admin-service:${IMAGE_TAG:-local}
 #     pull_policy: build
-#     <<: *service-common
+#     <<: [*service-common, *app-hardening]
+#     mem_limit: ${APP_MEM_LIMIT:-512m}
 #     networks: [data, edge]
 #     depends_on:
 #       postgres:
@@ -568,7 +644,8 @@ services:
 #       target: runtime
 #     image: ecom/public-service:${IMAGE_TAG:-local}
 #     pull_policy: build
-#     <<: *service-common
+#     <<: [*service-common, *app-hardening]
+#     mem_limit: ${APP_MEM_LIMIT:-512m}
 #     networks: [data, edge]
 #     depends_on:
 #       postgres:
