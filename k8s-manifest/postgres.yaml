@@ -1,0 +1,106 @@
+# =====================================================================
+# 01-postgres.yaml – ডাটাবেস (compose এর postgres service এর k8s রূপ)
+# উপমা: Service = দোকানের ঠিকানা, StatefulSet = যে কর্মী নিজের আলমারি (data) সাথে রাখে
+# =====================================================================
+apiVersion: v1                          # Service এর জন্য এই সংস্করণ
+kind: Service                           # ধরন: Service (অন্য Pod গুলো এই নামে postgres কে ডাকবে)
+metadata:                               # পরিচয়
+  name: postgres                        # নাম "postgres", ঠিক compose এর মতোই, তাই DATABASE_URL এর host বদলাতে হবে না
+spec:                                   # বিবরণ
+  selector:                             # কোন Pod এ ডাক পাঠাবে
+    app: postgres                       # যে Pod এ label app=postgres আছে
+  ports:                                # দরজা
+    - port: 5432                        # Service এর দরজা 5432
+      targetPort: 5432                  # Pod এর ভেতরের দরজা 5432
+---                                     # নতুন জিনিস শুরু
+apiVersion: apps/v1                     # StatefulSet এর জন্য এই সংস্করণ
+kind: StatefulSet                       # ধরন: StatefulSet (ডাটাবেসের মতো data রাখা জিনিসের জন্য)
+metadata:                               # পরিচয়
+  name: postgres                        # নাম postgres, তাই Pod এর নাম হবে postgres-0
+spec:                                   # বিবরণ
+  serviceName: postgres                 # কোন Service এর সাথে যুক্ত
+  replicas: 1                           # ১টা কপি (ডাটাবেস একটাই চলবে)
+  selector:                             # কোন Pod কে নিজের বলে চিনবে
+    matchLabels:                        # label মিলিয়ে
+      app: postgres                     # app=postgres
+  template:                             # Pod এর নকশা শুরু
+    metadata:                           # Pod এর পরিচয়
+      labels:                           # Pod এ লাগানো label
+        app: postgres                   # app=postgres (Service এই label দেখে ডাক পাঠায়)
+    spec:                               # Pod এর বিবরণ
+      containers:                       # Pod এর ভেতরের container
+        - name: postgres                # container এর নাম
+          image: postgres:16-alpine     # compose এর মতো একই image
+          ports:                        # দরজা
+            - containerPort: 5432       # এই container 5432 এ শোনে
+          env:                          # environment variable (compose এর environment: ব্লক)
+            - name: POSTGRES_DB         # ডাটাবেসের নাম
+              valueFrom:                # মান আসবে অন্য জায়গা থেকে
+                configMapKeyRef:        # ConfigMap থেকে
+                  name: ecom-config     # ConfigMap এর নাম
+                  key: POSTGRES_DB      # ওই ConfigMap এর এই key
+            - name: POSTGRES_USER       # মালিকের নাম
+              valueFrom:                # মান আসবে অন্য জায়গা থেকে
+                configMapKeyRef:        # ConfigMap থেকে
+                  name: ecom-config     # ConfigMap এর নাম
+                  key: POSTGRES_USER    # এই key
+            - name: POSTGRES_PASSWORD   # মালিকের password
+              valueFrom:                # মান আসবে অন্য জায়গা থেকে
+                secretKeyRef:           # Secret থেকে (গোপন মান)
+                  name: ecom-secrets    # Secret এর নাম
+                  key: POSTGRES_PASSWORD   # এই key
+            - name: AUTH_DB_PASSWORD    # auth service এর DB user এর password (init স্ক্রিপ্টে লাগে)
+              valueFrom:                # মান আসবে অন্য জায়গা থেকে
+                secretKeyRef:           # Secret থেকে
+                  name: ecom-secrets    # Secret এর নাম
+                  key: AUTH_DB_PASSWORD # এই key
+            - name: ADMIN_DB_PASSWORD   # admin service এর DB user এর password
+              valueFrom:                # মান আসবে অন্য জায়গা থেকে
+                secretKeyRef:           # Secret থেকে
+                  name: ecom-secrets    # Secret এর নাম
+                  key: ADMIN_DB_PASSWORD   # এই key
+            - name: PUBLIC_DB_PASSWORD  # public service এর DB user এর password
+              valueFrom:                # মান আসবে অন্য জায়গা থেকে
+                secretKeyRef:           # Secret থেকে
+                  name: ecom-secrets    # Secret এর নাম
+                  key: PUBLIC_DB_PASSWORD  # এই key
+            - name: POSTGRES_INITDB_ARGS   # প্রথমবার ডাটাবেস বানানোর অপশন
+              value: "--data-checksums"    # data নষ্ট হলে ধরা পড়বে
+            - name: PGDATA              # ডাটাবেসের ফাইল রাখার জায়গা
+              value: /var/lib/postgresql/data/pgdata   # volume এর ভেতরের উপ-ফোল্ডার (volume এর মূলে অন্য ফাইল থাকলে Postgres গোলমাল করে)
+          volumeMounts:                 # কোন আলমারি কোথায় বসবে
+            - name: data                # "data" নামের আলমারি (নিচে বানানো)
+              mountPath: /var/lib/postgresql/data   # Postgres এর data ফোল্ডারে
+            - name: init                # "init" নামের ConfigMap
+              mountPath: /docker-entrypoint-initdb.d   # প্রথমবার চালুর সময় এখানের স্ক্রিপ্ট একবার চলবে
+              readOnly: true            # শুধু পড়া যাবে
+          readinessProbe:               # "তুমি কাজের জন্য তৈরি?" প্রশ্ন (তৈরি না হলে কেউ ডাক পাঠাবে না)
+            exec:                       # container এর ভেতরে এই কমান্ড চালাও
+              command: ["sh", "-c", "pg_isready -h 127.0.0.1 -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]   # -h 127.0.0.1 দিয়ে আসল চালু হওয়া পর্যন্ত অপেক্ষা (প্রথমবারের init চলার সময় ভুল করে "তৈরি" বলবে না)
+            initialDelaySeconds: 10     # শুরুর ১০ সেকেন্ড পরে প্রথম প্রশ্ন
+            periodSeconds: 10           # প্রতি ১০ সেকেন্ডে
+            failureThreshold: 10        # পরপর ১০ বার ব্যর্থ হলে "তৈরি না"
+          livenessProbe:                # "তুমি বেঁচে আছো?" প্রশ্ন (না হলে Pod নতুন করে চালু হবে)
+            exec:                       # container এর ভেতরে এই কমান্ড চালাও
+              command: ["sh", "-c", "pg_isready -h 127.0.0.1 -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]   # একই পরীক্ষা
+            initialDelaySeconds: 60     # প্রথমবার init শেষ হওয়ার সময় দিতে ৬০ সেকেন্ড পরে শুরু
+            periodSeconds: 20           # প্রতি ২০ সেকেন্ডে
+            failureThreshold: 6         # পরপর ৬ বার ব্যর্থ হলে restart
+          resources:                    # কতটা RAM লাগবে
+            requests:                   # অন্তত যতটা দরকার (node বাছাইয়ের সময় ধরা হয়)
+              memory: 256Mi             # ২৫৬ MB
+            limits:                     # সর্বোচ্চ যতটা নিতে পারবে
+              memory: 1Gi               # ১ GB (compose এর mem_limit 1g এর মতো)
+      volumes:                          # Pod এর আলমারি/ফাইল
+        - name: init                    # "init" নাম
+          configMap:                    # ConfigMap থেকে
+            name: postgres-init         # ধাপ ৪ এ বানানো ConfigMap
+            defaultMode: 0755           # ফাইলগুলো চালানোর অনুমতিসহ (.sh স্ক্রিপ্ট চলার জন্য)
+  volumeClaimTemplates:                 # প্রতিটা Pod এর নিজস্ব আলমারি বানানোর নকশা
+    - metadata:                         # আলমারির পরিচয়
+        name: data                      # নাম "data" (উপরের volumeMounts এ এই নাম)
+      spec:                             # বিবরণ
+        accessModes: ["ReadWriteOnce"]  # একবারে একটা node এ লেখা যাবে
+        resources:                      # কতটা জায়গা
+          requests:                     # চাওয়া
+            storage: 5Gi                # ৫ GB (শেখার জন্য যথেষ্ট, পরে বাড়ানো যায়)
