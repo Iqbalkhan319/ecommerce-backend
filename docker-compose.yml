@@ -208,8 +208,16 @@ services:                     # সব container এর তালিকা শ�
       KONG_ADMIN_ACCESS_LOG: /dev/stdout   # Admin API এর access log stdout এ
       KONG_ADMIN_ERROR_LOG: /dev/stderr    # Admin API এর error log stderr এ
       KONG_LOG_LEVEL: ${KONG_LOG_LEVEL:-notice}   # log এর স্তর; default notice
-      KONG_ADMIN_LISTEN: "off"       # Admin API একদম বন্ধ (নিরাপত্তা)
-      KONG_ADMIN_GUI_LISTEN: "off"   # Admin GUI বন্ধ
+      
+      # KONG_ADMIN_LISTEN: "off"       # Admin API একদম বন্ধ (নিরাপত্তা)
+      # KONG_ADMIN_GUI_LISTEN: "off"   # Admin GUI বন্ধ
+
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"         # Admin API সব interface এ port 8001 এ শুনবে (container এর ভেতরে)
+      KONG_ADMIN_GUI_LISTEN: "0.0.0.0:8002"   # Admin GUI সব interface এ port 8002 এ শুনবে (container এর ভেতরে)
+
+      KONG_ADMIN_GUI_URL: http://${KONG_MANAGER_HOST}:8002
+      KONG_ADMIN_GUI_API_URL: http://${KONG_MANAGER_HOST}:8001
+      
       KONG_PROXY_LISTEN: 0.0.0.0:8000   # proxy সব interface এ port 8000 এ শুনবে (container এর ভেতরে)
       KONG_NGINX_WORKER_PROCESSES: ${KONG_WORKERS:-2}   # nginx worker process সংখ্যা (default ২)
       KONG_PLUGINS: bundled   # Kong এর সাথে আসা সব built-in plugin চালু
@@ -219,6 +227,8 @@ services:                     # সব container এর তালিকা শ�
       - ./infrastructure/kong/kong.yml:/kong/declarative/kong.yml:ro   # Kong এর route/service config ফাইল read-only mount
     ports:                    # port publish
       - "${KONG_BIND_ADDR:-127.0.0.1}:${KONG_PROXY_PORT:-8000}:8000"   # host 127.0.0.1:8000 → container 8000
+      - "${KONG_ADMIN_BIND_ADDR:-127.0.0.1}:${KONG_ADMIN_PORT:-8001}:8001"
+      - "${KONG_MANAGER_BIND_ADDR:-127.0.0.1}:${KONG_MANAGER_PORT:-8002}:8002"
     healthcheck:              # স্বাস্থ্য পরীক্ষা
       test: ["CMD", "kong", "health"]   # Kong এর নিজস্ব health কমান্ড
       interval: 15s           # প্রতি ১৫ সেকেন্ডে
