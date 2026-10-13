@@ -8,13 +8,13 @@ consumers:
         algorithm: RS256
         rsa_public_key: |
           -----BEGIN PUBLIC KEY-----
-          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlM3TgwIy9uzo9Yp+Bj2q
-          P9WSJ0JQm+L1rFuwpYrTMSCxmkirk5UeeB9Q+S+gIxycZOgGL6gt3oV9AtNwNqLI
-          eHGRhE2awPsfXwwYmt7FVUovZPk/XZ0AxD/qlYhFDGipMAf51L7JIxtlwbkQ0l0l
-          4MXLPbeyQswc/bJOD2Pe8kzCk79LfhQwwTwQigOfZ2JXx47IpaaPFXf2LvPpN5MQ
-          JDi3oY/VLWN5rBmdZto/xQp9oLwhVZLUO99jxsiRgrLXeqvGZY1qvVogHtwVNUZH
-          TQKxC4S0IexI5RjU0ytbq/Llg42lOtOxDwULJYZJKsyQnyrLmkFn16adyBPrytNr
-          hQIDAQAB
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5t3Ubxmr/93mmkqA8OUj
+          wHOSg5ZXuPVnLDRjk7wPYjTU7nE/XDoJryqhsefu8oirjlbcLL264Kj+oDXT8Gab
+          IID78W4MUQfZ5UZjIPqFQ31NFbZNjnVPC1d73Z8jagJBDYiuuR3+cFX+Ozlz1V4x
+          5p5eB+bH13y2jGLx76Ay8gmYPUCI/pwAD2cXUUoStOB5ACDJ5ZLosScUEj+I2KU1
+          iiBfjuzNMLyDZe9lp4SyyECBjlLajFIpAiDGxbf36ktRRLt6UJ837Zx0YXSfL09O
+          MC/NWrM5V4uaZOJ4kVcyuxPBD+a1ToLs8QawT50rK6swwRp+dQWgNEPdeKRp4nqw
+          5QIDAQAB
           -----END PUBLIC KEY-----
 
 services:
@@ -100,7 +100,7 @@ plugins:
 
   - name: cors
     config:
-      origins: [http://shop.172.17.0.233.nip.io:32060, http://admin.172.17.0.233.nip.io:32060]
+      origins: [http://shop.172.17.0.233.nip.io, http://admin.172.17.0.233.nip.io]
       methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
       headers:
         - Accept
