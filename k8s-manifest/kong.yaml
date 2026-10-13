@@ -52,9 +52,9 @@ spec:
             - name: KONG_ADMIN_GUI_LISTEN
               value: "0.0.0.0:8002"
             - name: KONG_ADMIN_GUI_URL
-              value: "http://172.17.0.233:30802"
+              value: "http://kong-manager.172.17.0.233.nip.io:32060"
             - name: KONG_ADMIN_GUI_API_URL
-              value: "http://172.17.0.233:30801"
+              value: "http://kong-admin.172.17.0.233.nip.io:32060"
             - name: KONG_PROXY_ACCESS_LOG
               value: /dev/stdout
             - name: KONG_PROXY_ERROR_LOG
