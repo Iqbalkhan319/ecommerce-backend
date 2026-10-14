@@ -13,6 +13,7 @@ resources:
   - kong.yaml
   - redisinsight.yaml
   - ingress.yaml
+  - seed-jobs.yaml
 
 configMapGenerator:
   - name: kong-config

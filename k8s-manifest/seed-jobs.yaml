@@ -1,0 +1,216 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed-auth
+spec:
+  backoffLimit: 20
+  activeDeadlineSeconds: 1200
+  template:
+    spec:
+      restartPolicy: OnFailure
+      enableServiceLinks: false
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: seed
+          image: nuruzzaman24x/ecom-auth:1.0
+          command:
+            - sh
+            - -c
+            - cd /app/services/auth && until node dist/seed/seed.js; do echo "waiting for migrations..."; sleep 10; done
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: SERVICE_NAME
+              value: auth-service
+            - name: PORT
+              value: "3001"
+            - name: DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: ecom-secrets
+                  key: AUTH_DB_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://auth_service:$(DB_PASS)@postgres:5432/ecommerce"
+            - name: DATABASE_POOL_MAX
+              value: "5"
+            - name: NODE_ENV
+              value: development
+            - name: LOG_LEVEL
+              value: info
+            - name: LOG_PRETTY
+              value: "false"
+            - name: API_PREFIX
+              value: api
+            - name: API_VERSION
+              value: v1
+            - name: JWT_ISSUER
+              value: ecom-auth
+            - name: JWT_AUDIENCE
+              value: ecom-api
+            - name: REDIS_KEY_PREFIX
+              value: ecom
+            - name: CACHE_ENABLED
+              value: "false"
+            - name: RABBITMQ_ENABLED
+              value: "false"
+            - name: RUN_MIGRATIONS
+              value: "false"
+            - name: RUN_SEED
+              value: "false"
+            - name: JWT_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ecom-secrets
+                  key: JWT_PUBLIC_KEY
+            - name: JWT_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ecom-secrets
+                  key: JWT_PRIVATE_KEY
+            - name: INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ecom-secrets
+                  key: INTERNAL_API_KEY
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ecom-secrets
+                  key: REDIS_PASSWORD
+            - name: REDIS_URL
+              value: "redis://:$(REDIS_PASSWORD)@redis:6379/0"
+            - name: RABBITMQ_USER
+              valueFrom:
+                secretKeyRef:
+                  name: ecom-secrets
+                  key: RABBITMQ_USER
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ecom-secrets
+                  key: RABBITMQ_PASSWORD
+            - name: RABBITMQ_URL
+              value: "amqp://$(RABBITMQ_USER):$(RABBITMQ_PASSWORD)@rabbitmq:5672/%2F"
+            - name: SUPER_ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: ecom-secrets
+                  key: SUPER_ADMIN_EMAIL
+            - name: SUPER_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ecom-secrets
+                  key: SUPER_ADMIN_PASSWORD
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed-admin
+spec:
+  backoffLimit: 20
+  activeDeadlineSeconds: 1200
+  template:
+    spec:
+      restartPolicy: OnFailure
+      enableServiceLinks: false
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: seed
+          image: nuruzzaman24x/ecom-admin:1.0
+          command:
+            - sh
+            - -c
+            - cd /app/services/admin && until node dist/seed/seed.js; do echo "waiting for migrations..."; sleep 10; done
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: SERVICE_NAME
+              value: admin-service
+            - name: PORT
+              value: "3002"
+            - name: DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: ecom-secrets
+                  key: ADMIN_DB_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://admin_service:$(DB_PASS)@postgres:5432/ecommerce"
+            - name: DATABASE_POOL_MAX
+              value: "5"
+            - name: NODE_ENV
+              value: development
+            - name: LOG_LEVEL
+              value: info
+            - name: LOG_PRETTY
+              value: "false"
+            - name: API_PREFIX
+              value: api
+            - name: API_VERSION
+              value: v1
+            - name: JWT_ISSUER
+              value: ecom-auth
+            - name: JWT_AUDIENCE
+              value: ecom-api
+            - name: REDIS_KEY_PREFIX
+              value: ecom
+            - name: CACHE_ENABLED
+              value: "false"
+            - name: RABBITMQ_ENABLED
+              value: "false"
+            - name: RUN_MIGRATIONS
+              value: "false"
+            - name: RUN_SEED
+              value: "false"
+            - name: JWT_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ecom-secrets
+                  key: JWT_PUBLIC_KEY
+            - name: INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ecom-secrets
+                  key: INTERNAL_API_KEY
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ecom-secrets
+                  key: REDIS_PASSWORD
+            - name: REDIS_URL
+              value: "redis://:$(REDIS_PASSWORD)@redis:6379/0"
+            - name: RABBITMQ_USER
+              valueFrom:
+                secretKeyRef:
+                  name: ecom-secrets
+                  key: RABBITMQ_USER
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ecom-secrets
+                  key: RABBITMQ_PASSWORD
+            - name: RABBITMQ_URL
+              value: "amqp://$(RABBITMQ_USER):$(RABBITMQ_PASSWORD)@rabbitmq:5672/%2F"
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-service:3001"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
