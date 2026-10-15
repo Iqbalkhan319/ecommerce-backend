@@ -11,6 +11,7 @@ resources:
   - admin.yaml
   - public.yaml
   - kong.yaml
+  - kong-servicemonitor.yaml
   - redisinsight.yaml
   - ingress.yaml
   - seed-jobs.yaml

@@ -8,13 +8,13 @@ consumers:
         algorithm: RS256
         rsa_public_key: |
           -----BEGIN PUBLIC KEY-----
-          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArUCRf2olrh1Wu3cyCuST
-          EXItShGYFurHMtIhDuxfJBxZdk7BdNVmcjjaHXnaA2i/eWEkPKd+MXOL75DtQTuB
-          p9pga6xLTLn/T6d9+Kl0CTE7bAyNs9N7Ws73GW9j+Py5Ml2MLQwWCnos6SkNiSEd
-          wkXCXK0nl58tZ2w6tLHlUvLTSYNYV9x2jHJdROOM4I7LiUYylNfGWURrZEHXueZY
-          YxibQoZXwy4eMotRxQgFinLgwAUDlvivR3mAqy0SGkbwLmG8I4TahdigDNCDtc67
-          YFyGlfBIZrmxUSGe1djDHUJmvWXtko+Y55E8fNj+B1xWCWN+GNbmy31i/2h39Si5
-          iwIDAQAB
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6tatNzVdi3QpE8B/xWfC
+          7PXEnGA6/1duyA7rxepuvfo13HyBAVUUPkMtn6tZ4m4X4PMVGoEf/k7rsDYT8OFW
+          U2vqATBuWHW/KbN/N3aUJLpIrzkygbTKZoxAXioP0QvGuVstm5PfMZfA0PyNx4De
+          GM0+On8oLuQk2LuVJoqzW/YRLh70DLkVQa33Avu+T3SQo/vm7tLQAlMpwYAzFHyH
+          i93WQI6LTfxi0hpizY0KC+pZxwVTMORYO7wMh5u12XBrir4qluzsrHlhdBfMk3GA
+          5TdJFU/J/EJEHskpWtGGsN8xt/R8Pe/FTAyBTuodJiWKCHOS/15VcRxAeRMl9Mr0
+          jQIDAQAB
           -----END PUBLIC KEY-----
 
 services:
@@ -173,3 +173,11 @@ plugins:
       status_code: 404
       content_type: "application/json; charset=utf-8"
       body: '{"success":false,"error":{"code":"NOT_FOUND","message":"Not found","requestId":"gateway"}}'
+
+  - name: prometheus
+    config:
+      per_consumer: false
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true

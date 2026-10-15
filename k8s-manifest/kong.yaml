@@ -3,6 +3,8 @@ kind: Service
 metadata:
   name: kong
   namespace: ecom
+  labels:
+    app: kong
 spec:
   selector:
     app: kong
@@ -16,6 +18,9 @@ spec:
     - name: manager
       port: 8002
       targetPort: 8002
+    - name: status
+      port: 8100
+      targetPort: 8100
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -40,6 +45,7 @@ spec:
             - containerPort: 8000
             - containerPort: 8001
             - containerPort: 8002
+            - containerPort: 8100
           env:
             - name: KONG_DATABASE
               value: "off"
@@ -51,6 +57,8 @@ spec:
               value: "0.0.0.0:8001"
             - name: KONG_ADMIN_GUI_LISTEN
               value: "0.0.0.0:8002"
+            - name: KONG_STATUS_LISTEN
+              value: "0.0.0.0:8100"
             - name: KONG_ADMIN_GUI_URL
               value: "http://kong-manager.172.17.0.233.nip.io"
             - name: KONG_ADMIN_GUI_API_URL

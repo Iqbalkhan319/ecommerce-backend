@@ -1,0 +1,16 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kong
+  namespace: ecom
+spec:
+  selector:
+    matchLabels:
+      app: kong
+  namespaceSelector:
+    matchNames:
+      - ecom
+  endpoints:
+    - port: status
+      path: /metrics
+      interval: 30s
