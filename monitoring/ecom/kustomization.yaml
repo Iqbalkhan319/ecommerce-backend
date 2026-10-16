@@ -6,3 +6,4 @@ resources:
   - redis-exporter.yaml
   - postgres-exporter.yaml
   - rabbitmq-servicemonitor.yaml
+  - dashboard-ecom-overview.yaml

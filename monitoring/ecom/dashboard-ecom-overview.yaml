@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-ecom-overview
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  ecom-overview.json: |
+    {
+      "title": "ECOM Overview",
+      "uid": "ecom-overview",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {"from": "now-1h", "to": "now"},
+      "panels": [
+        {"id": 1, "type": "stat", "title": "Redis Up", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+         "targets": [{"expr": "redis_up", "refId": "A"}]},
+        {"id": 2, "type": "stat", "title": "Postgres Up", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+         "targets": [{"expr": "pg_up", "refId": "A"}]},
+        {"id": 3, "type": "stat", "title": "RabbitMQ Up", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+         "targets": [{"expr": "count(rabbitmq_identity_info) or vector(0)", "refId": "A"}]},
+        {"id": 4, "type": "stat", "title": "Pod Restarts (1h)", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+         "targets": [{"expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"ecom\"}[1h]))", "refId": "A"}]},
+        {"id": 5, "type": "timeseries", "title": "Kong Requests/s by Status", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+         "targets": [{"expr": "sum by (code) (rate(kong_http_requests_total[5m]))", "refId": "A"}]},
+        {"id": 6, "type": "timeseries", "title": "Memory by Pod (ecom)", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+         "targets": [{"expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"ecom\",container!=\"\"})", "refId": "A"}]},
+        {"id": 7, "type": "timeseries", "title": "CPU by Pod (ecom)", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+         "targets": [{"expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"ecom\",container!=\"\"}[5m]))", "refId": "A"}]},
+        {"id": 8, "type": "timeseries", "title": "Redis Connected Clients", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+         "targets": [{"expr": "redis_connected_clients", "refId": "A"}]}
+      ]
+    }
