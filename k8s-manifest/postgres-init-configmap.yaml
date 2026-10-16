@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+data:
+  01-schemas-and-roles.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    : "${POSTGRES_DB:?POSTGRES_DB is required}"
+    : "${POSTGRES_USER:?POSTGRES_USER is required}"
+    : "${AUTH_DB_PASSWORD:?AUTH_DB_PASSWORD is required}"
+    : "${ADMIN_DB_PASSWORD:?ADMIN_DB_PASSWORD is required}"
+    : "${PUBLIC_DB_PASSWORD:?PUBLIC_DB_PASSWORD is required}"
+
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<EOSQL
+    -- No implicit privileges for anonymous roles.
+    REVOKE ALL ON SCHEMA public FROM PUBLIC;
+    REVOKE ALL ON DATABASE "$POSTGRES_DB" FROM PUBLIC;
+
+    CREATE ROLE auth_service   LOGIN PASSWORD '${AUTH_DB_PASSWORD}'   NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+    CREATE ROLE admin_service  LOGIN PASSWORD '${ADMIN_DB_PASSWORD}'  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+    CREATE ROLE public_service LOGIN PASSWORD '${PUBLIC_DB_PASSWORD}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+
+    GRANT CONNECT ON DATABASE "$POSTGRES_DB" TO auth_service, admin_service, public_service;
+
+    CREATE SCHEMA IF NOT EXISTS auth       AUTHORIZATION auth_service;
+    CREATE SCHEMA IF NOT EXISTS commerce   AUTHORIZATION admin_service;
+    CREATE SCHEMA IF NOT EXISTS storefront AUTHORIZATION public_service;
+
+    -- A service may only see and modify its own schema.
+    REVOKE ALL ON SCHEMA auth       FROM admin_service, public_service;
+    REVOKE ALL ON SCHEMA commerce   FROM auth_service, public_service;
+    REVOKE ALL ON SCHEMA storefront FROM auth_service, admin_service;
+
+    ALTER ROLE auth_service   SET search_path = auth;
+    ALTER ROLE admin_service  SET search_path = commerce;
+    ALTER ROLE public_service SET search_path = storefront;
+
+    -- Prisma Migrate needs an advisory-lock capable connection and its own migrations table inside the owned schema only.
+    EOSQL
+
+    echo "Service schemas and least-privilege roles created."

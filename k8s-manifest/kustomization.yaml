@@ -4,6 +4,9 @@ kind: Kustomization
 namespace: ecom
 
 resources:
+  - postgres-init-configmap.yaml
+  - redis-conf-configmap.yaml
+  - rabbitmq-conf-configmap.yaml
   - postgres.yaml
   - redis.yaml
   - rabbitmq.yaml

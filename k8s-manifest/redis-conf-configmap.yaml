@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-conf
+data:
+  redis.conf: |
+    bind 0.0.0.0
+    protected-mode yes
+    port 6379
+    tcp-keepalive 300
+    timeout 0
+
+    appendonly yes
+    appendfsync everysec
+    save 900 1
+    save 300 10
+
+    maxmemory 256mb
+    maxmemory-policy allkeys-lru
+
+    rename-command FLUSHALL ""
+    rename-command CONFIG ""
+    rename-command DEBUG ""
+
+    loglevel notice
+    databases 4
