@@ -7,3 +7,4 @@ resources:
   - postgres-exporter.yaml
   - rabbitmq-servicemonitor.yaml
   - dashboard-ecom-overview.yaml
+  - alert-rules.yaml

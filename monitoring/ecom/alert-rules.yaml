@@ -1,0 +1,71 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ecom-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: ecom.pods
+      rules:
+        - alert: EcomPodRestarting
+          expr: increase(kube_pod_container_status_restarts_total{namespace="ecom"}[15m]) > 0
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.pod }} restart হয়েছে"
+        - alert: EcomPodNotRunning
+          expr: kube_pod_status_phase{namespace="ecom",phase=~"Pending|Failed|Unknown"} == 1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod {{ $labels.pod }} {{ $labels.phase }} অবস্থায় আটকে আছে"
+        - alert: EcomPodOOMKilled
+          expr: kube_pod_container_status_last_terminated_reason{namespace="ecom",reason="OOMKilled"} == 1
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.pod }} memory শেষ হয়ে OOMKilled হয়েছে"
+    - name: ecom.data
+      rules:
+        - alert: EcomRedisDown
+          expr: redis_up == 0 or absent(redis_up)
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Redis কাজ করছে না"
+        - alert: EcomPostgresDown
+          expr: pg_up == 0 or absent(pg_up)
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Postgres কাজ করছে না"
+        - alert: EcomRabbitMQDown
+          expr: absent(rabbitmq_identity_info) or up{namespace="ecom",service="rabbitmq-metrics"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "RabbitMQ কাজ করছে না"
+    - name: ecom.gateway
+      rules:
+        - alert: EcomKongDown
+          expr: up{namespace="ecom",service="kong"} == 0 or absent(up{namespace="ecom",service="kong"})
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Kong gateway কাজ করছে না"
+        - alert: EcomKongHigh5xx
+          expr: sum(rate(kong_http_requests_total{code=~"5.."}[5m])) / sum(rate(kong_http_requests_total[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kong-এ ৫% এর বেশি request 5xx error দিচ্ছে"
