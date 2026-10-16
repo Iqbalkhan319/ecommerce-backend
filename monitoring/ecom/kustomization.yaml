@@ -5,3 +5,4 @@ resources:
   - kong-servicemonitor.yaml
   - redis-exporter.yaml
   - postgres-exporter.yaml
+  - rabbitmq-servicemonitor.yaml
