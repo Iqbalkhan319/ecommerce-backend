@@ -38,7 +38,7 @@ alertmanager:
       requests: {memory: 64Mi}
       limits: {memory: 128Mi}
 
-# kubeadm ক্লাস্টারে এগুলো ডিফল্টে স্ক্র্যাপ করা যায় না, তাই ভুয়া অ্যালার্ট এড়াতে বন্ধ রাখা হলো
+# These cannot be scraped by default on a kubeadm cluster, so they are disabled to avoid false alerts
 kubeEtcd:
   enabled: false
 kubeScheduler:

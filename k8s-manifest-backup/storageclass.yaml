@@ -1,0 +1,9 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-path-retain                                   # data রাখার জন্য storage এর নাম
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"     # কিছু না বললে এটাই ডিফল্ট হবে (আলাদা patch কমান্ড লাগবে না)
+provisioner: rancher.io/local-path                          # আলমারি বানায় local-path কারিগরই
+reclaimPolicy: Retain                                       # PVC মুছলেও data থেকে যাবে
+volumeBindingMode: WaitForFirstConsumer                     # Pod কোন node এ বসবে ঠিক হলে তবেই আলমারি বানাও
