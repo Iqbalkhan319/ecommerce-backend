@@ -259,6 +259,11 @@ rather than a file, and set `SWAGGER_ENABLED=false`.
   exporter and scrape `/health`
 
 
+
+
+
+
+
 ########### kubernetes deployment #########
 # ECOM Platform: Kubernetes Deployment Guide
 
@@ -287,7 +292,7 @@ Browser -> ingress-nginx -> storefront / admin-ui / kong (API gateway)
 
 ```
 ecommerce-backend/
-├── k8s-manifest/                      # Application manifests (Kustomize)
+├── k8s-infra-manifest/                      # Application manifests (Kustomize)
 ├── argocd/ecom-backend-application.yaml
 ├── monitoring/
 │   ├── application.yaml               # kube-prometheus-stack (Helm via Argo CD)
