@@ -257,3 +257,409 @@ rather than a file, and set `SWAGGER_ENABLED=false`.
   cache is invalidated
 - **Metrics.** The structured logger and request ids are already in place; add a Prometheus
   exporter and scrape `/health`
+
+
+########### kubernetes deployment #########
+# ECOM Platform: Kubernetes Deployment Guide
+
+This guide deploys the e-commerce platform (storefront, admin UI, Kong gateway, auth/admin/public services, Postgres, Redis, RabbitMQ, RedisInsight) and its monitoring stack (Prometheus, Grafana, Alertmanager) on a fresh Kubernetes cluster.
+
+Everything is managed with **Argo CD (GitOps)**. Only a few things are created by hand because they must never be stored in Git: Secrets, and the cluster-level prerequisites.
+
+## 1. Architecture
+
+```
+Browser -> ingress-nginx -> storefront / admin-ui / kong (API gateway)
+                            kong -> auth-service, admin-service, public-service
+                            services -> postgres, redis, rabbitmq
+```
+
+| Component | Port | Notes |
+|---|---|---|
+| storefront | 3000 | Customer web UI |
+| admin-ui | 3100 | Admin web UI |
+| kong | 8000 proxy, 8001 admin API, 8002 manager, 8100 status (metrics, internal only) | DB-less, config from `kong.rendered.yml` |
+| auth-service / admin-service / public-service | 3001 / 3002 / 3003 | NestJS |
+| postgres / redis / rabbitmq | 5432 / 6379 / 5672, 15672 | StatefulSets |
+| redisinsight | 5540 | Redis UI |
+
+## 2. Repository layout
+
+```
+ecommerce-backend/
+├── k8s-manifest/                      # Application manifests (Kustomize)
+├── argocd/ecom-backend-application.yaml
+├── monitoring/
+│   ├── application.yaml               # kube-prometheus-stack (Helm via Argo CD)
+│   ├── values.yaml                    # Helm values (Grafana, Prometheus, Alertmanager)
+│   ├── ecom-monitoring-application.yaml
+│   └── ecom/                          # ServiceMonitors, exporters, dashboard, alert rules
+└── gitops/
+    ├── argocd_install                 # Argo CD install commands
+    └── argocd-ingress.yaml
+
+ecommerce-frontend/
+└── k8s-manifest/                      # storefront + admin-ui manifests
+```
+
+## 3. Prerequisites
+
+- A Kubernetes cluster (tested on v1.28, kubeadm, 1 control-plane + 1 worker, Calico).
+- On the machine you run commands from: `kubectl`, `git`, `docker`, `openssl`, `python3`.
+- A Docker Hub account (images are `nuruzzaman24x/ecom-*:1.0`; if you use another account, update the `image:` fields in the manifests).
+- Outbound internet access from the cluster.
+- This guide uses `nip.io` hostnames built from the worker node IP. Set it once:
+
+```bash
+export IP=$(kubectl get node worker01 -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
+echo $IP
+```
+
+## 4. Step-by-step deployment
+
+### Step 1: Clone both repositories
+
+```bash
+cd ~
+git clone https://github.com/nuruzzaman24x/ecommerce-backend.git
+git clone https://github.com/nuruzzaman24x/ecommerce-frontend.git
+```
+
+### Step 2: Create namespaces
+
+```bash
+kubectl create namespace ecom
+kubectl create namespace monitoring
+```
+
+(The `argocd` namespace is created in Step 8.)
+
+### Step 3: Install the storage provisioner
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.26/deploy/local-path-storage.yaml
+kubectl get pods -n local-path-storage
+```
+
+Do **not** patch `local-path` as the default class. The repo already defines `local-path-retain` (`k8s-manifest/storageclass.yaml`) as the default class, and having two defaults breaks PVC creation.
+
+Note: `local-path` stores data on the node where the pod runs. This is fine for a lab or single-worker setup. For real production use NFS, Longhorn or Ceph.
+
+### Step 4: Install ingress-nginx
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.1/deploy/static/provider/baremetal/deploy.yaml
+
+kubectl -n ingress-nginx patch deployment ingress-nginx-controller -p '{"spec":{"strategy":{"type":"Recreate","rollingUpdate":null},"template":{"spec":{"hostNetwork":true,"dnsPolicy":"ClusterFirstWithHostNet","nodeSelector":{"kubernetes.io/hostname":"worker01"}}}}}'
+
+kubectl get pods -n ingress-nginx
+```
+
+What the patch does:
+
+- `hostNetwork: true` serves ports 80/443 directly on the worker node, so URLs need no port number.
+- `nodeSelector: worker01` pins the controller to the node whose IP is used in the `nip.io` hostnames. Change `worker01` if your node name differs.
+- `Recreate` strategy avoids two controller pods fighting for port 80 on the same node.
+
+### Step 5: Set your ingress IP in the manifests
+
+If your worker IP is not `172.17.0.233`, replace it everywhere and commit:
+
+```bash
+cd ~/ecommerce-backend
+OLD=172.17.0.233
+grep -rl "$OLD" k8s-manifest monitoring gitops | xargs sed -i "s/$OLD/$IP/g"
+git diff --stat
+git add -A k8s-manifest monitoring
+git commit -m "Set ingress IP for new cluster"
+git push origin main
+```
+
+Files affected: `k8s-manifest/ingress.yaml`, `k8s-manifest/kong.yaml`, `k8s-manifest/kong.rendered.yml` (CORS origins), `monitoring/values.yaml` (Grafana host), `gitops/argocd-ingress.yaml`.
+
+### Step 6: Create the application Secret (`ecom-secrets`)
+
+Secrets are never stored in Git. Generate a fresh JWT key pair and create the Secret:
+
+```bash
+mkdir -p ~/ecom-secrets && cd ~/ecom-secrets && chmod 700 .
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out jwt-private.pem
+openssl rsa -pubout -in jwt-private.pem -out jwt-public.pem
+chmod 600 jwt-private.pem
+
+read -rp  "Super admin email: " SA_EMAIL
+read -rsp "Super admin password (min 12 chars): " SA_PASS; echo
+
+kubectl create secret generic ecom-secrets -n ecom \
+  --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 24)" \
+  --from-literal=AUTH_DB_PASSWORD="$(openssl rand -hex 24)" \
+  --from-literal=ADMIN_DB_PASSWORD="$(openssl rand -hex 24)" \
+  --from-literal=PUBLIC_DB_PASSWORD="$(openssl rand -hex 24)" \
+  --from-literal=REDIS_PASSWORD="$(openssl rand -hex 24)" \
+  --from-literal=RABBITMQ_USER="ecom_mq" \
+  --from-literal=RABBITMQ_PASSWORD="$(openssl rand -hex 24)" \
+  --from-literal=INTERNAL_API_KEY="$(openssl rand -hex 32)" \
+  --from-literal=SUPER_ADMIN_EMAIL="$SA_EMAIL" \
+  --from-literal=SUPER_ADMIN_PASSWORD="$SA_PASS" \
+  --from-literal=JWT_PRIVATE_KEY="$(base64 -w0 jwt-private.pem)" \
+  --from-literal=JWT_PUBLIC_KEY="$(base64 -w0 jwt-public.pem)"
+unset SA_PASS
+
+kubectl get secret ecom-secrets -n ecom
+```
+
+The Secret must contain exactly these 12 keys: `POSTGRES_PASSWORD`, `AUTH_DB_PASSWORD`, `ADMIN_DB_PASSWORD`, `PUBLIC_DB_PASSWORD`, `REDIS_PASSWORD`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD`, `INTERNAL_API_KEY`, `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`.
+
+Keep the `.pem` files in a safe place outside Git. Never commit them.
+
+### Step 7: Put the new JWT public key into Kong's config
+
+Kong verifies tokens with the public key stored in `k8s-manifest/kong.rendered.yml`. If you generated a new key pair in Step 6, update the file, otherwise every protected API returns `401 Unauthorized`.
+
+(Skip this step only if you reused the same key pair that is already in the file.)
+
+```bash
+cd ~/ecommerce-backend/k8s-manifest
+python3 - <<'EOF'
+import re
+pub = open('/root/ecom-secrets/jwt-public.pem').read().strip().splitlines()
+s = open('kong.rendered.yml').read()
+new = "rsa_public_key: |\n" + "\n".join("          " + l for l in pub) + "\n"
+s = re.sub(r"rsa_public_key: \|[^\n]*\n(?:          .*\n)+", new, s)
+open('kong.rendered.yml', 'w').write(s)
+EOF
+
+git diff kong.rendered.yml
+cd ~/ecommerce-backend
+git add k8s-manifest/kong.rendered.yml
+git commit -m "Update Kong JWT public key"
+git push origin main
+```
+
+Check the first key line matches your public key:
+
+```bash
+sed -n '2p' ~/ecom-secrets/jwt-public.pem
+grep -A1 "BEGIN PUBLIC KEY" ~/ecommerce-backend/k8s-manifest/kong.rendered.yml | tail -1
+```
+
+### Step 8: Build and push the Docker images
+
+Skip the builds you do not need: if the images already exist on Docker Hub and your IP did not change, you can reuse them.
+
+Backend images (independent of the IP):
+
+```bash
+cd ~/ecommerce-backend
+docker login -u nuruzzaman24x
+for x in auth admin public; do
+  docker build -f services/$x/Dockerfile -t nuruzzaman24x/ecom-$x:1.0 . || break
+  docker push nuruzzaman24x/ecom-$x:1.0 || break
+done
+```
+
+Frontend images. These **bake the public URLs into the build**, so they must be rebuilt whenever the ingress IP changes:
+
+```bash
+cd ~/ecommerce-frontend
+
+docker build -f apps/public/Dockerfile \
+  --build-arg NEXT_PUBLIC_SITE_URL=http://shop.$IP.nip.io \
+  --build-arg NEXT_PUBLIC_ADMIN_URL=http://admin.$IP.nip.io \
+  -t nuruzzaman24x/ecom-storefront:1.0 .
+docker push nuruzzaman24x/ecom-storefront:1.0
+
+docker build -f apps/admin/Dockerfile \
+  --build-arg NEXT_PUBLIC_SITE_URL=http://shop.$IP.nip.io \
+  --build-arg NEXT_PUBLIC_ADMIN_URL=http://admin.$IP.nip.io \
+  -t nuruzzaman24x/ecom-admin-ui:1.0 .
+docker push nuruzzaman24x/ecom-admin-ui:1.0
+```
+
+### Step 9: Install Argo CD
+
+```bash
+kubectl create namespace argocd
+
+kubectl apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.12.6/manifests/install.yaml
+
+kubectl patch configmap argocd-cmd-params-cm -n argocd \
+  --type merge -p '{"data":{"server.insecure":"true"}}'
+
+kubectl rollout restart deployment argocd-server -n argocd
+kubectl rollout status deployment argocd-server -n argocd
+
+kubectl apply -f ~/ecommerce-backend/gitops/argocd-ingress.yaml
+```
+
+Get the initial admin password (do not share it):
+
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath="{.data.password}" | base64 -d; echo
+```
+
+Open `http://argocd.$IP.nip.io` (user `admin`).
+
+### Step 10: Give Argo CD access to the repository (private repo only)
+
+Create a GitHub fine-grained token with **Contents: Read-only** on the backend repository only.
+
+```bash
+kubectl create secret generic repo-ecommerce-backend -n argocd \
+  --from-literal=type=git \
+  --from-literal=url=https://github.com/nuruzzaman24x/ecommerce-backend.git \
+  --from-literal=username=<GITHUB_USERNAME> \
+  --from-literal=password='<GITHUB_TOKEN>'
+
+kubectl label secret repo-ecommerce-backend -n argocd \
+  argocd.argoproj.io/secret-type=repository
+```
+
+Never commit the token.
+
+### Step 11: Create the Grafana admin Secret
+
+```bash
+kubectl create secret generic grafana-admin -n monitoring \
+  --from-literal=admin-user=admin \
+  --from-literal=admin-password='<STRONG_PASSWORD>'
+```
+
+### Step 12: Deploy everything with Argo CD
+
+Apply the three Applications **in this order**. `kube-prometheus-stack` must come first because it installs the ServiceMonitor and PrometheusRule CRDs that `ecom-monitoring` needs. `ecom-monitoring` may show an error for a minute or two until the CRDs exist, then it heals itself.
+
+```bash
+cd ~/ecommerce-backend
+kubectl apply -f monitoring/application.yaml
+kubectl apply -f monitoring/ecom-monitoring-application.yaml
+kubectl apply -f argocd/ecom-backend-application.yaml
+```
+
+What each Application manages:
+
+| Application | Path | Destination |
+|---|---|---|
+| `kube-prometheus-stack` | Helm chart + `monitoring/values.yaml` | `monitoring` |
+| `ecom-monitoring` | `monitoring/ecom/` | `ecom` (dashboard and alert rules go to `monitoring`) |
+| `ecom-backend` | `k8s-manifest/` | `ecom` |
+
+The seed jobs (`seed-auth`, `seed-admin`) retry until the database migrations finish, so brief errors at first start are normal. The services may restart a few times while Postgres, Redis and RabbitMQ come up.
+
+### Step 13: Deploy the frontend
+
+The frontend is not managed by Argo CD, so apply it manually:
+
+```bash
+cd ~/ecommerce-frontend/k8s-manifest
+kubectl apply -k .
+```
+
+### Step 14: Restart Kong after a config change
+
+Config maps are generated without a hash suffix, so Kong does not restart on its own when `kong.rendered.yml` changes:
+
+```bash
+kubectl rollout restart deploy/kong -n ecom
+kubectl rollout status deploy/kong -n ecom
+```
+
+## 5. Verify
+
+```bash
+kubectl get application -n argocd          # all three: Synced / Healthy
+kubectl get pods -n ecom                   # all Running (seed jobs: Completed)
+kubectl get pods -n monitoring             # all Running
+kubectl get pvc -n ecom                    # all Bound
+kubectl get servicemonitor -n ecom
+```
+
+Check that Prometheus sees every target (each value must be `1`):
+
+```bash
+for q in redis_up pg_up rabbitmq_identity_info; do
+  kubectl exec -n monitoring prometheus-kube-prometheus-stack-prometheus-0 -c prometheus -- \
+    wget -qO- "http://localhost:9090/api/v1/query?query=$q"; echo
+done
+```
+
+Quick functional test: open the storefront, sign up a user, log in, then confirm the user appears in the Admin UI.
+
+## 6. URLs
+
+Replace `<IP>` with your ingress IP.
+
+| Service | URL | Login |
+|---|---|---|
+| Storefront | `http://shop.<IP>.nip.io` | No |
+| Admin UI | `http://admin.<IP>.nip.io` | Super admin email/password from `ecom-secrets` |
+| API (Kong proxy) | `http://api.<IP>.nip.io/api/v1/public/catalog/products` | No |
+| Kong Manager | `http://kong-manager.<IP>.nip.io` | No |
+| Kong Admin API | `http://kong-admin.<IP>.nip.io` | No |
+| RabbitMQ UI | `http://mq.<IP>.nip.io` | `RABBITMQ_USER` / `RABBITMQ_PASSWORD` from `ecom-secrets` |
+| RedisInsight | `http://redisinsight.<IP>.nip.io` | No (Redis pre-connected) |
+| Grafana | `http://grafana.<IP>.nip.io` | `admin` / password from `grafana-admin` |
+| Argo CD | `http://argocd.<IP>.nip.io` | `admin` / initial admin password |
+
+Prometheus and Alertmanager have no ingress. Use port-forward:
+
+```bash
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090:9090 --address 0.0.0.0
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-alertmanager 9093:9093 --address 0.0.0.0
+```
+
+Then open `http://<NODE_IP>:9090` (targets at `/targets`, alerts at `/alerts`) and `http://<NODE_IP>:9093`.
+
+Read credentials from the cluster when needed (do not paste them into chats or tickets):
+
+```bash
+kubectl get secret ecom-secrets -n ecom -o jsonpath='{.data.SUPER_ADMIN_EMAIL}' | base64 -d; echo
+kubectl get secret ecom-secrets -n ecom -o jsonpath='{.data.SUPER_ADMIN_PASSWORD}' | base64 -d; echo
+kubectl get secret ecom-secrets -n ecom -o jsonpath='{.data.RABBITMQ_PASSWORD}' | base64 -d; echo
+```
+
+## 7. Database access
+
+```bash
+kubectl exec -it -n ecom postgres-0 -- psql -U ecom_owner -d ecommerce
+```
+
+Useful commands inside `psql`: `\dn` (schemas: `auth`, `commerce`, `storefront`), `\dt auth.*`, `\du` (roles), `\q` (quit).
+
+## 8. Monitoring summary
+
+- **Metrics sources:** Kong (Prometheus plugin on status port 8100), Postgres exporter, Redis exporter, RabbitMQ (`rabbitmq_prometheus`, port 15692), plus pod CPU/memory/restart metrics from kubelet and kube-state-metrics.
+- **Dashboard:** "ECOM Overview" in Grafana, loaded automatically from a ConfigMap labelled `grafana_dashboard: "1"`.
+- **Alerts** (`monitoring/ecom/alert-rules.yaml`): pod restarting, pod not running, OOMKilled, Redis/Postgres/RabbitMQ/Kong down, Kong 5xx rate above 5%.
+- **Not yet configured:** alert delivery (Telegram or email) in Alertmanager, and application-level metrics for the NestJS services.
+
+## 9. Manual deployment without Argo CD
+
+```bash
+kubectl apply -k ~/ecommerce-backend/k8s-manifest
+kubectl apply -k ~/ecommerce-frontend/k8s-manifest
+
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+  --version 61.9.0 -n monitoring -f ~/ecommerce-backend/monitoring/values.yaml
+kubectl apply -k ~/ecommerce-backend/monitoring/ecom
+```
+
+The `kubectl apply -k monitoring/ecom` step only works after the Helm install, because the CRDs come from the chart.
+
+## 10. Important notes
+
+- **Postgres init runs once.** The `postgres-init` script only runs when the data volume is first created. If the database was initialised without the right ConfigMap or Secret, delete the Postgres PVC and start again.
+- **Never commit** `ecom-secrets` values, `.pem` files, Grafana passwords or GitHub tokens.
+- **`local-path-retain` keeps data** after a PVC is deleted. Clean up the volumes on the node by hand if you want a fully fresh start.
+- **Kong config is generated** by `npm run kong:render`. If you re-render it, the JWT public key and any manual edits (such as the `prometheus` plugin) must come from the template, or they are lost.
+
+## 11. Known gaps (to fix later)
+
+1. Kong Admin API, RabbitMQ UI and RedisInsight are exposed through ingress. Kong Admin has no authentication. Remove them from `ingress.yaml` or protect them.
+2. No CPU requests or limits on any pod (only memory).
+3. Single replica for every service, and plain HTTP (no TLS).
+4. No database backups. Postgres data lives on one node's local disk.
+5. Alertmanager does not deliver notifications yet.
