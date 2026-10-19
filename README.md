@@ -341,14 +341,16 @@ kubectl create namespace monitoring
 
 ### Step 3: Install the storage provisioner
 
+Storage is provided by the NFS subdir external provisioner (StorageClass `nfs-client`, set as default).
+
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.26/deploy/local-path-storage.yaml
-kubectl get pods -n local-path-storage
+kubectl get sc
+kubectl -n kube-system get pods | grep nfs-provisioner
 ```
 
-Do **not** patch `local-path` as the default class. The repo already defines `local-path-retain` (`k8s-manifest/storageclass.yaml`) as the default class, and having two defaults breaks PVC creation.
+Requirements on the NFS server: the export must allow the worker nodes and use `no_root_squash`, because Postgres, Redis and RabbitMQ change file ownership on start. Keep only one default StorageClass.
 
-Note: `local-path` stores data on the node where the pod runs. This is fine for a lab or single-worker setup. For real production use NFS, Longhorn or Ceph.
+Note: data lives on the NFS server, so it survives node loss. Back up the NFS export (for example with `pg_dump` for Postgres).
 
 ### Step 4: Install ingress-nginx
 
@@ -658,7 +660,7 @@ The `kubectl apply -k monitoring/ecom` step only works after the Helm install, b
 
 - **Postgres init runs once.** The `postgres-init` script only runs when the data volume is first created. If the database was initialised without the right ConfigMap or Secret, delete the Postgres PVC and start again.
 - **Never commit** `ecom-secrets` values, `.pem` files, Grafana passwords or GitHub tokens.
-- **`local-path-retain` keeps data** after a PVC is deleted. Clean up the volumes on the node by hand if you want a fully fresh start.
+- **The `nfs-client` StorageClass keeps data** on the NFS server after a PVC is deleted (reclaim policy `Retain`). Remove the old directories on the NFS server by hand if you want a fully fresh start.
 - **Kong config is generated** by `npm run kong:render`. If you re-render it, the JWT public key and any manual edits (such as the `prometheus` plugin) must come from the template, or they are lost.
 
 ## 11. Known gaps (to fix later)
