@@ -8,7 +8,7 @@ spec:
   source:
     repoURL: https://github.com/nuruzzaman24x/ecommerce-backend.git
     targetRevision: main
-    path: k8s-manifest
+    path: k8s-infra-manifest
   destination:
     server: https://kubernetes.default.svc
     namespace: ecom

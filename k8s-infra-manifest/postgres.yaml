@@ -100,7 +100,7 @@ spec:                                   # বিবরণ
     - metadata:                         # আলমারির পরিচয়
         name: data                      # নাম "data" (উপরের volumeMounts এ এই নাম)
       spec:                             # বিবরণ
-        storageClassName: nfs-client  # কোন ধরনের আলমারি (nfs-client = node এর ফাইল সিস্টেমে, Pod delete হলেও থাকে)
+        storageClassName: nfs-client  # কোন ধরনের আলমারি (nfs-client = NFS server-এ data থাকে, Pod delete হলেও থাকে)
         accessModes: ["ReadWriteOnce"]  # একবারে একটা node এ লেখা যাবে
         resources:                      # কতটা জায়গা
           requests:                     # চাওয়া
