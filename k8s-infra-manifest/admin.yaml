@@ -162,7 +162,7 @@ kind: PersistentVolumeClaim                     # ধরন: স্থায়�
 metadata:                                       # দাবির পরিচয়
   name: invoice-data                            # নাম invoice-data, উপরের Deployment এই নামে ডাকে
 spec:                                           # দাবির বিবরণ
-  storageClassName: local-path-retain           # কোন ধরনের আলমারি (local-path-retain = node-এর ফাইল সিস্টেমে, Pod delete হলেও থাকে)
+  storageClassName: nfs-client           # কোন ধরনের আলমারি (nfs-client = node-এর ফাইল সিস্টেমে, Pod delete হলেও থাকে)
   accessModes: ["ReadWriteOnce"]                # একবারে একটা নোড থেকে পড়া ও লেখা যাবে
   resources:                                    # কতটা জায়গা লাগবে
     requests:                                   # চাওয়া
