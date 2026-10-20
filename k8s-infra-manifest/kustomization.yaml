@@ -1,42 +1,44 @@
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1   # kustomize এর API সংস্করণ
+kind: Kustomization                            # এই ফাইলের ধরন
 
-namespace: ecom
+namespace: ecom                                # সব রিসোর্স এই namespace এ যাবে
 
-resources:
-  - postgres-init-configmap.yaml
-  - redis-conf-configmap.yaml
-  - rabbitmq-conf-configmap.yaml
-  - postgres.yaml
-  - redis.yaml
-  - rabbitmq.yaml
-  - auth.yaml
-  - admin.yaml
-  - public.yaml
-  - kong.yaml
-  - redisinsight.yaml
-  - ingress.yaml
-  - seed-jobs.yaml
+resources:                                     # যে ফাইলগুলো একসাথে apply হবে
+  - postgres-init-configmap.yaml               # postgres এর init script
+  - redis-conf-configmap.yaml                  # redis এর কনফিগ
+  - rabbitmq-conf-configmap.yaml               # rabbitmq এর কনফিগ
+  - postgres.yaml                              # postgres
+  - redis.yaml                                 # redis
+  - rabbitmq.yaml                              # rabbitmq
+  - auth.yaml                                  # auth-service
+  - admin.yaml                                 # admin-service ও admin-ui
+  - public.yaml                                # public-service ও storefront
+  - kong.yaml                                  # Kong gateway
+  - redisinsight.yaml                          # redisinsight
+  - ingress.yaml                               # ingress নিয়ম
+  - seed-jobs.yaml                             # seed job গুলো
 
-configMapGenerator:
-  - name: kong-config
-    files:
-      - kong.yml=kong.rendered.yml
-  - name: ecom-config
-    literals:
-      - POSTGRES_DB=ecommerce
-      - POSTGRES_USER=ecom_owner
-      - NODE_ENV=production
-      - LOG_LEVEL=info
-      - LOG_PRETTY=false
-      - SWAGGER_ENABLED=false
-      - REDIS_KEY_PREFIX=ecom
-      - CACHE_ENABLED=true
-      - RABBITMQ_ENABLED=true
-      - JWT_ISSUER=ecom-auth
-      - JWT_AUDIENCE=ecom-api
-      - RUN_MIGRATIONS=true
-      - RUN_SEED=false
+configMapGenerator:                            # ফাইল বা মান থেকে ConfigMap বানানোর অংশ
+  - name: kong-config                          # Kong এই নামেই ConfigMap পড়ে (kong.yaml এ আছে)
+    files:                                     # ConfigMap এ যে ফাইল যাবে
+      - kong.yml=kong.rendered.yml             # kong.rendered.yml এর ভেতরের নাম হবে kong.yml
+    options:                                   # শুধু এই ConfigMap এর জন্য আলাদা নিয়ম
+      disableNameSuffixHash: false             # ফাইল বদলালে নামের শেষে নতুন hash বসবে, তাই Kong নিজে রিস্টার্ট হবে
+  - name: ecom-config                          # বাকি সার্ভিসের সাধারণ কনফিগ (অপরিবর্তিত)
+    literals:                                  # সরাসরি key=value মান
+      - POSTGRES_DB=ecommerce                  # ডাটাবেসের নাম
+      - POSTGRES_USER=ecom_owner               # ডাটাবেসের owner ইউজার
+      - NODE_ENV=production                    # production মোড
+      - LOG_LEVEL=info                         # লগের স্তর
+      - LOG_PRETTY=false                       # লগ JSON আকারে থাকবে
+      - SWAGGER_ENABLED=false                  # Swagger বন্ধ
+      - REDIS_KEY_PREFIX=ecom                  # redis key এর শুরুর অংশ
+      - CACHE_ENABLED=true                     # cache চালু
+      - RABBITMQ_ENABLED=true                  # rabbitmq চালু
+      - JWT_ISSUER=ecom-auth                   # টোকেনের issuer (Kong এর key এর সাথে মিলতে হবে)
+      - JWT_AUDIENCE=ecom-api                  # টোকেনের audience
+      - RUN_MIGRATIONS=true                    # শুরুতে migration চলবে
+      - RUN_SEED=false                         # seed স্বয়ংক্রিয়ভাবে চলবে না
 
-generatorOptions:
-  disableNameSuffixHash: true
+generatorOptions:                              # সব ConfigMap এর ডিফল্ট নিয়ম
+  disableNameSuffixHash: true                  # ডিফল্টে নামের শেষে hash বসবে না (kong-config ওপরে এটা ওভাররাইড করেছে)
