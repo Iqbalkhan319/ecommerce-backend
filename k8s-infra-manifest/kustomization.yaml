@@ -15,7 +15,6 @@ resources:                                     # যে ফাইলগুলো
   - public.yaml                                # public-service ও storefront
   - kong.yaml                                  # Kong gateway
   - redisinsight.yaml                          # redisinsight
-  - ingress.yaml                               # ingress নিয়ম
   - seed-jobs.yaml                             # seed job গুলো
 
 configMapGenerator:                            # ফাইল বা মান থেকে ConfigMap বানানোর অংশ
