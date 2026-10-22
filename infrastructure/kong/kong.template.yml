@@ -79,6 +79,16 @@ services:
         strip_path: false
 
 plugins:
+  ### Prometheus plugin: Kong-er metrics (request rate, latency, status code)
+  ### Kong-er status port 8100 er /metrics endpoint-e expose kore.
+  ### Prometheus ei endpoint scrape kore, Grafana dashboard-e Kong traffic dekhay.
+  - name: prometheus
+    config:
+      status_code_metrics: true   ### status code (2xx/4xx/5xx) onujayi request count
+      latency_metrics: true   ### request, kong ar upstream latency
+      bandwidth_metrics: true   ### request/response byte count
+      upstream_health_metrics: true   ### upstream service-er health
+
   - name: correlation-id
     config:
       header_name: X-Request-Id
