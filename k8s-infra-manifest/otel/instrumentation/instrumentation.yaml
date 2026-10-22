@@ -1,0 +1,16 @@
+### Operator ei resource dekhe app pod-e Node.js auto-instrumentation inject kore.
+### Code ba image bodlate hoy na, shudhu Deployment-e annotation lage.
+apiVersion: opentelemetry.io/v1alpha1
+kind: Instrumentation
+metadata:
+  name: ecom-nodejs
+  namespace: ecom
+spec:
+  exporter:
+    endpoint: http://otel-collector.monitoring.svc.cluster.local:4318
+  propagators:
+    - tracecontext
+    - baggage
+  sampler:
+    type: parentbased_traceidratio
+    argument: "1"

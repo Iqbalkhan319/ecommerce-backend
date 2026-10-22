@@ -22,6 +22,8 @@ spec:
     metadata:
       labels:
         app: public-service
+      annotations:
+        instrumentation.opentelemetry.io/inject-nodejs: "ecom-nodejs"
     spec:
       enableServiceLinks: false
       securityContext:
@@ -36,6 +38,8 @@ spec:
           readOnlyRootFilesystem: true
           capabilities: {drop: [ALL]}
         env:
+        - name: NODE_OPTIONS
+          value: "--enable-source-maps"
         - {name: SERVICE_NAME, value: public-service}
         - {name: PORT, value: "3003"}
         - {name: DB_PASS, valueFrom: {secretKeyRef: {name: ecom-secrets, key: PUBLIC_DB_PASSWORD}}}

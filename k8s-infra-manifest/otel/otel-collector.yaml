@@ -1,0 +1,35 @@
+### OpenTelemetry Collector: app-gulo theke trace nei (OTLP), Tempo-te pathay.
+### OpenTelemetry Operator ei resource dekhe Collector pod ar service toiri kore.
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel
+  namespace: monitoring
+spec:
+  mode: deployment
+  replicas: 1
+  config:
+    receivers:
+      otlp:                          ### app-er auto-instrumentation ei port-e trace pathabe
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    processors:
+      memory_limiter:                ### memory beshi hole data drop kore, Collector crash theke bachay
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+      batch: {}                      ### trace gulo ekshathe batch kore pathay, efficient
+    exporters:
+      otlp/jaeger:                    ### trace store: monitoring namespace-er Jaeger
+        endpoint: jaeger.monitoring.svc.cluster.local:4317
+        tls:
+          insecure: true             ### cluster-er bhitore plain gRPC
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp/jaeger]
