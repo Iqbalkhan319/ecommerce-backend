@@ -1,0 +1,53 @@
+### Fluent Bit (Helm): pod log -> logstash-*, node (kubelet) log -> node-*. Password Secret theke.
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+
+env:
+  - name: ES_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: elasticsearch-master-credentials
+        key: password
+
+config:
+  filters: |
+    [FILTER]
+        Name kubernetes
+        Match kube.*
+        Merge_Log Off
+        Keep_Log On
+        K8S-Logging.Parser On
+        K8S-Logging.Exclude On
+
+  outputs: |
+    [OUTPUT]
+        Name es
+        Match kube.*
+        Host elasticsearch-master
+        Port 9200
+        HTTP_User elastic
+        HTTP_Passwd ${ES_PASSWORD}
+        tls On
+        tls.verify Off
+        Logstash_Format On
+        Logstash_Prefix logstash
+        Replace_Dots On
+        Retry_Limit False
+        Suppress_Type_Name On
+
+    [OUTPUT]
+        Name es
+        Match host.*
+        Host elasticsearch-master
+        Port 9200
+        HTTP_User elastic
+        HTTP_Passwd ${ES_PASSWORD}
+        tls On
+        tls.verify Off
+        Logstash_Format On
+        Logstash_Prefix node
+        Replace_Dots On
+        Retry_Limit False
+        Suppress_Type_Name On

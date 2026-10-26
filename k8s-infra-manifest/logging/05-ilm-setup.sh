@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-### ILM retention (7 din) + replica 0 (single-node cluster). Bar bar chalaleo kono khoti nei.
+### ILM retention (7 din) + replica 0 (single-node). Bar bar chalaleo kono khoti nei.
 set -euo pipefail
 
 NS=logging
 NODE_IP=172.17.0.233
-PW=$(kubectl -n "$NS" get secret efk-es-elastic-user -o go-template='{{.data.elastic | base64decode}}')
-NP=$(kubectl -n "$NS" get svc efk-es-http -o jsonpath='{.spec.ports[0].nodePort}')
+PW=$(kubectl -n "$NS" get secret elasticsearch-master-credentials -o jsonpath='{.data.password}' | base64 -d)
+NP=$(kubectl -n "$NS" get svc elasticsearch-master -o jsonpath='{.spec.ports[0].nodePort}')
 ES="https://${NODE_IP}:${NP}"
 
 es_put() {
@@ -23,9 +23,9 @@ es_put "_ilm/policy/logs-7d" '{
   }
 }'
 
-echo "== 2. Index template: notun logstash-* index-e policy + replica 0 =="
+echo "== 2. Template: logstash-* ar node-* index-e policy + replica 0 =="
 es_put "_index_template/logs-template" '{
-  "index_patterns": ["logstash-*"],
+  "index_patterns": ["logstash-*", "node-*"],
   "priority": 200,
   "template": {
     "settings": {
@@ -35,14 +35,11 @@ es_put "_index_template/logs-template" '{
   }
 }'
 
-echo "== 3. Ager toiri index gulote lagano =="
-es_put "logstash-*/_settings" '{
+echo "== 3. Ager toiri index thakle sheikhane lagano =="
+es_put "logstash-*,node-*/_settings?allow_no_indices=true" '{
   "index.lifecycle.name": "logs-7d",
   "index.number_of_replicas": 0
 }'
 
 echo "== Verify: index health =="
-curl -sk -u "elastic:${PW}" "${ES}/_cat/indices/logstash-*?v&h=index,health,docs.count,store.size"
-
-echo "== Verify: ILM policy =="
-curl -sk -u "elastic:${PW}" "${ES}/logstash-*/_ilm/explain?filter_path=indices.*.policy,indices.*.phase&pretty"
+curl -sk -u "elastic:${PW}" "${ES}/_cat/indices/logstash-*,node-*?v&h=index,health,docs.count,store.size"

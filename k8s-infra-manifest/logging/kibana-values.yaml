@@ -1,0 +1,14 @@
+### Kibana (Helm): Elasticsearch-er sathe connect, NodePort 30601.
+elasticsearchHosts: "https://elasticsearch-master:9200"
+
+resources:
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
+  limits:
+    cpu: "1000m"
+    memory: "1Gi"
+
+service:
+  type: NodePort
+  nodePort: 30601
