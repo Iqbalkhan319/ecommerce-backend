@@ -1,0 +1,19 @@
+### ArgoCD Application: backend repo-র k8s-apps দেখে ecom namespace-এ নিজে apply করবে।
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ecom-backend
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/nuruzzaman24x/ecommerce-backend.git
+    targetRevision: main
+    path: k8s-apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ecom
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true

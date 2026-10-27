@@ -1,0 +1,9 @@
+### ArgoCD (Helm): NodePort 30850 (HTTP), TLS ছাড়া চালানো হচ্ছে lab-এর জন্য।
+configs:
+  params:
+    server.insecure: true
+
+server:
+  service:
+    type: NodePort
+    nodePortHttp: 30850
