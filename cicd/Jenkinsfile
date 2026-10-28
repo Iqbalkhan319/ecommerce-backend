@@ -30,6 +30,17 @@ pipeline {
       }
     }
 
+    // stage('Security scan (Trivy)') {
+    //   steps {
+    //     sh '''
+    //       for svc in auth admin public; do
+    //         echo "===== Trivy scan: ecom-$svc:$TAG ====="
+    //         trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 0 --no-progress $REGISTRY/ecom-$svc:$TAG
+    //       done
+    //     '''
+    //   }
+    // }
+
     stage('Security scan (Trivy)') {
       steps {
         sh '''
