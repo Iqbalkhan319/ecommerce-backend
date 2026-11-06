@@ -8,26 +8,21 @@ metadata:
     app.kubernetes.io/instance: ingress-nginx
     app.kubernetes.io/name: ingress-nginx
     app.kubernetes.io/part-of: ingress-nginx
-    app.kubernetes.io/version: 1.10.1
 spec:
   type: LoadBalancer
-  externalTrafficPolicy: Cluster
-  ipFamilies:
-    - IPv4
-  ipFamilyPolicy: SingleStack
   ports:
-    - appProtocol: http
-      name: http
-      nodePort: 32659
+    - name: http
       port: 80
       protocol: TCP
       targetPort: http
-    - appProtocol: https
-      name: https
-      nodePort: 31237
+      appProtocol: http
+      nodePort: 30080
+    - name: https
       port: 443
       protocol: TCP
       targetPort: https
+      appProtocol: https
+      nodePort: 30443
   selector:
     app.kubernetes.io/component: controller
     app.kubernetes.io/instance: ingress-nginx
