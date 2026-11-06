@@ -74,6 +74,11 @@ spec:                                   # বিবরণ
             - name: init                # "init" নামের ConfigMap
               mountPath: /docker-entrypoint-initdb.d   # প্রথমবার চালুর সময় এখানের স্ক্রিপ্ট একবার চলবে
               readOnly: true            # শুধু পড়া যাবে
+          startupProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -h 127.0.0.1 -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            periodSeconds: 10
+            failureThreshold: 60
           readinessProbe:               # "তুমি কাজের জন্য তৈরি?" প্রশ্ন (তৈরি না হলে কেউ ডাক পাঠাবে না)
             exec:                       # container এর ভেতরে এই কমান্ড চালাও
               command: ["sh", "-c", "pg_isready -h 127.0.0.1 -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]   # -h 127.0.0.1 দিয়ে আসল চালু হওয়া পর্যন্ত অপেক্ষা (প্রথমবারের init চলার সময় ভুল করে "তৈরি" বলবে না)
