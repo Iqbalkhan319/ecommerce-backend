@@ -8,13 +8,13 @@ consumers:
         algorithm: RS256
         rsa_public_key: |
           -----BEGIN PUBLIC KEY-----
-          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmOUkpMi4/d3duu6F35/P
-          Eeyq0N/QTyzCTF7tNf/JDPLBJPp0HC5Ik0MQxDuwP1S7TJVh8j/A8zJxGT869NHo
-          8FX7ygar1vAWpZCOmfTtpSQaMR7o9H5CdmonukhCvLId/7UW/y4H2dU5pzn+CC4T
-          WFKqcKtLDyh7eLV66W1WYjWyN3uWo8e//fd4rg5sqmWhCvV9LKxApR2rNnwZ/u+a
-          dByIMhmHnAZn6VMYzcnWGCPB1wIdjdE7vt0i+EGyKZtBOcFcWE1yrLZwcnoeeiz4
-          cAxJuQA5WqFVxSaPYiLOirNZN7siyCj8IiIz+Fcj7eHXpn4carWb4bKPQwSWpOPK
-          OQIDAQAB
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkkQvub3KPus6r3ud+Icl
+          jbUUVReiOuhJTIWCThTGppxz+CEsXzf1CK6SIrEFP+XBYwiz19KWb82F7H7U4WlL
+          WhroMiUWhNh+ftAZkhOrMWWlMAsDsPUZQybftx9zDjLxTnD2aZdJN8Bm2fHohjl2
+          l31HPcWDQgDPgu51O5QAD+nZO0ssAaWBrIckQDS+rmX9Tc7z4TjK4vMm1+1kfgwI
+          PSTxZ2rJxU8buxvrsqhnYVIMnCufs3H5RbMR9CNlZ10XbsY7RzxaGFUVVHHXTk9k
+          t3z3I2aJD5bB4VO8ZY9X7vJbIhJ+WC47xvKmRaNSAXGMh2WalxKM+sr0bkdELM8g
+          mwIDAQAB
           -----END PUBLIC KEY-----
 
 services:
@@ -110,7 +110,7 @@ plugins:
 
   - name: cors
     config:
-      origins: [http://172.17.0.233:30000, http://172.17.0.233:30100]
+      origins: [http://172.17.0.14]
       methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
       headers:
         - Accept
