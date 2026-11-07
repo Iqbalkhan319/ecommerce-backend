@@ -26,5 +26,4 @@ antiAffinity: "soft"
 clusterHealthCheckParams: "wait_for_status=yellow&timeout=1s"
 
 service:
-  type: NodePort
-  nodePort: 30920
+  type: ClusterIP

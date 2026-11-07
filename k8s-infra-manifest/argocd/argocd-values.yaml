@@ -5,5 +5,4 @@ configs:
 
 server:
   service:
-    type: NodePort
-    nodePortHttp: 30850
+    type: ClusterIP

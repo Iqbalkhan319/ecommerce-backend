@@ -3,10 +3,12 @@
 set -euo pipefail
 
 NS=logging
-NODE_IP=172.17.0.233
 PW=$(kubectl -n "$NS" get secret elasticsearch-master-credentials -o jsonpath='{.data.password}' | base64 -d)
-NP=$(kubectl -n "$NS" get svc elasticsearch-master -o jsonpath='{.spec.ports[0].nodePort}')
-ES="https://${NODE_IP}:${NP}"
+kubectl -n "$NS" port-forward svc/elasticsearch-master 9200:9200 >/dev/null 2>&1 &
+PF=$!
+trap "kill $PF" EXIT
+sleep 5
+ES="https://localhost:9200"
 
 es_put() {
   curl -sk -u "elastic:${PW}" -H 'Content-Type: application/json' -X PUT "${ES}/$1" -d "$2"

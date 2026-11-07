@@ -48,11 +48,10 @@ metadata:
   name: jaeger-ui
   namespace: monitoring
 spec:
-  type: NodePort
+  type: ClusterIP
   selector:
     app: jaeger
   ports:
     - name: ui
       port: 16686
       targetPort: 16686
-      nodePort: 30686

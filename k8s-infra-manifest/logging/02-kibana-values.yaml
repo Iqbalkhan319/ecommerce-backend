@@ -10,5 +10,4 @@ resources:
     memory: "1Gi"
 
 service:
-  type: NodePort
-  nodePort: 30601
+  type: ClusterIP
