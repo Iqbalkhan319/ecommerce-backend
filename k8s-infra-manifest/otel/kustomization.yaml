@@ -4,3 +4,4 @@ namespace: monitoring
 resources:
   - otel-collector.yaml
   - jaeger.yaml
+  - ingress.yaml
