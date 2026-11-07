@@ -20,6 +20,7 @@ spec:                                           # Deployment-এর বিবর
       containers:                               # পডের ভেতরের container-এর তালিকা
       - name: admin-service                     # container-এর নাম
         image: nuruzzaman24x/ecom-admin:1.0     # যে Docker image চালাবে (Docker Hub থেকে)
+        imagePullPolicy: Always
         ports:                                  # container-এর দরজা
         - containerPort: 3002                   # container এই পোর্টে শোনে
         securityContext:                        # container-এর নিরাপত্তা সেটিং

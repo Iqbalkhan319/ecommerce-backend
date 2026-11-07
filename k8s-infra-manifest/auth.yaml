@@ -32,6 +32,7 @@ spec:                                           # Deployment-এর বিবর
       containers:                               # পডের ভেতরের container-এর তালিকা
       - name: auth-service                      # container-এর নাম
         image: nuruzzaman24x/ecom-auth:1.0      # যে Docker image চালাবে (Docker Hub থেকে)
+        imagePullPolicy: Always
         ports:                                  # container-এর দরজা
         - containerPort: 3001                   # container এই পোর্টে শোনে
         securityContext:                        # container-এর নিরাপত্তা সেটিং

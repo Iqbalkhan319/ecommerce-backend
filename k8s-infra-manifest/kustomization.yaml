@@ -17,6 +17,7 @@ resources:                                     # যে ফাইলগুলো
   - redisinsight.yaml                          # redisinsight
   - seed-jobs.yaml                             # seed job গুলো
   - ingress.yaml                               # backend ingress
+  - ecom-secrets-sealed.yaml                   # sealed secrets
 
 configMapGenerator:                            # ফাইল বা মান থেকে ConfigMap বানানোর অংশ
   - name: kong-config                          # Kong এই নামেই ConfigMap পড়ে (kong.yaml এ আছে)
