@@ -110,7 +110,7 @@ plugins:
 
   - name: cors
     config:
-      origins: [http://172.17.0.14]
+      origins: [http://shop.local, http://admin.local]
       methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
       headers:
         - Accept
