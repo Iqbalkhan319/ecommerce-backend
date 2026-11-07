@@ -142,7 +142,7 @@ spec:                                           # Deployment-এর বিবর
           periodSeconds: 20                     # প্রতি ২০ সেকেন্ডে পরীক্ষা
           failureThreshold: 6                   # পরপর ৬ বার ব্যর্থ হলে পড রিস্টার্ট
         resources:                              # RAM-এর হিসাব
-          requests: {memory: 128Mi}             # অন্তত ১২৮ MB দরকার (নোড বাছাইয়ের সময় ধরা হয়)
+          requests: {cpu: 100m, memory: 128Mi}             # অন্তত ১২৮ MB দরকার (নোড বাছাইয়ের সময় ধরা হয়)
           limits: {memory: 512Mi}               # সর্বোচ্চ ৫১২ MB নিতে পারবে
       volumes:                                  # পডের ভলিউমের তালিকা
       - {name: tmp, emptyDir: {}}               # tmp: খালি অস্থায়ী ফোল্ডার, পড মুছলে মুছে যায়

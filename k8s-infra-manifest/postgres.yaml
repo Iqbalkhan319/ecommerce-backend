@@ -93,6 +93,7 @@ spec:                                   # বিবরণ
             failureThreshold: 6         # পরপর ৬ বার ব্যর্থ হলে restart
           resources:                    # কতটা RAM লাগবে
             requests:                   # অন্তত যতটা দরকার (node বাছাইয়ের সময় ধরা হয়)
+              cpu: 100m
               memory: 256Mi             # ২৫৬ MB
             limits:                     # সর্বোচ্চ যতটা নিতে পারবে
               memory: 1Gi               # ১ GB (compose এর mem_limit 1g এর মতো)

@@ -14,6 +14,9 @@ spec:
       containers:
         - name: seed
           image: nuruzzaman24x/ecom-auth:1.0
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {memory: 512Mi}
           command:
             - sh
             - -c
@@ -129,6 +132,9 @@ spec:
       containers:
         - name: seed
           image: nuruzzaman24x/ecom-admin:1.0
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {memory: 512Mi}
           command:
             - sh
             - -c
