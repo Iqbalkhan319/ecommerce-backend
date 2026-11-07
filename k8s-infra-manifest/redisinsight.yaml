@@ -28,7 +28,7 @@ spec:
       enableServiceLinks: false
       containers:
         - name: redisinsight
-          image: redis/redisinsight:latest
+          image: redis/redisinsight:2.70
           ports:
             - containerPort: 5540
           env:
