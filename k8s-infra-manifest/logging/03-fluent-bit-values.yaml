@@ -51,3 +51,10 @@ config:
         Replace_Dots On
         Retry_Limit False
         Suppress_Type_Name On
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 200Mi

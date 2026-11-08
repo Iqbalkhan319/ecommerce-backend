@@ -1,4 +1,4 @@
-### Elasticsearch (Helm): single-node, NFS storage, NodePort 30920. Security chart-er default (TLS + elastic user).
+### Elasticsearch (Helm): single-node, NFS storage, ClusterIP. Security chart-er default (TLS + elastic user).
 replicas: 1
 minimumMasterNodes: 1
 

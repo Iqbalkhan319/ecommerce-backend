@@ -1,4 +1,4 @@
-### Kibana (Helm): Elasticsearch-er sathe connect, NodePort 30601.
+### Kibana (Helm): Elasticsearch-er sathe connect, ClusterIP + Ingress (kibana.local).
 elasticsearchHosts: "https://elasticsearch-master:9200"
 
 resources:
@@ -11,3 +11,11 @@ resources:
 
 service:
   type: ClusterIP
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: kibana.local
+      paths:
+        - path: /
