@@ -43,6 +43,7 @@ pipeline {
               -Dsonar.projectKey=ecom-backend \
               -Dsonar.sources=services,packages \
               -Dsonar.exclusions="**/node_modules/**,**/dist/**,**/migrations/**" \
+              -Dsonar.ws.timeout=600 \
               -Dsonar.working.directory=/tmp/.scannerwork
           '''
         }
