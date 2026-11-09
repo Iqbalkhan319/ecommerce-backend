@@ -32,11 +32,12 @@ pipeline {
 
     stage('SonarQube scan') {
       steps {
-        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+        withCredentials([string(credentialsId: 'ecom-sonar-token', variable: 'SONAR_TOKEN')]) {
           sh '''
             docker run --rm \
+              --add-host sonar.local:172.17.0.14 \
               -e SONAR_TOKEN \
-              -e SONAR_HOST_URL="http://172.17.0.232:30900" \
+              -e SONAR_HOST_URL="http://sonar.local" \
               -v "$WORKSPACE":/usr/src \
               sonarsource/sonar-scanner-cli:latest \
               -Dsonar.projectKey=ecom-backend \
@@ -62,7 +63,7 @@ pipeline {
 
     stage('Push to Docker Hub') {
       steps {
-        withCredentials([usernamePassword(credentialsId: 'docker-cred',
+        withCredentials([usernamePassword(credentialsId: 'ecom-dockerhub',
                                           usernameVariable: 'DH_USER',
                                           passwordVariable: 'DH_PASS')]) {
           sh '''
@@ -78,18 +79,18 @@ pipeline {
 
     stage('Update manifest in git') {
       steps {
-        withCredentials([usernamePassword(credentialsId: 'github-cred',
+        withCredentials([usernamePassword(credentialsId: 'ecom-github',
                                           usernameVariable: 'GH_USER',
                                           passwordVariable: 'GH_PASS')]) {
           sh '''
-            sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-auth:)[^[:space:]#]+|\\1$TAG|"   k8s-apps/auth.yaml
-            sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-admin:)[^[:space:]#]+|\\1$TAG|"  k8s-apps/admin.yaml
-            sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-public:)[^[:space:]#]+|\\1$TAG|" k8s-apps/public.yaml
-            grep -n "^[[:space:]]*image:" k8s-apps/*.yaml
+            sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-auth:)[^[:space:]#]+|\\1$TAG|"   k8s-infra-manifest/auth.yaml
+            sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-admin:)[^[:space:]#]+|\\1$TAG|"  k8s-infra-manifest/admin.yaml
+            sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-public:)[^[:space:]#]+|\\1$TAG|" k8s-infra-manifest/public.yaml
+            grep -n "^[[:space:]]*image:" k8s-infra-manifest/auth.yaml k8s-infra-manifest/admin.yaml k8s-infra-manifest/public.yaml
 
             git config user.email "jenkins@local"
             git config user.name "jenkins"
-            git add k8s-apps/
+            git add k8s-infra-manifest/
             git commit -m "ci: deploy $TAG [skip ci]"
             git push https://$GH_USER:$GH_PASS@$REPO_URL HEAD:main
           '''
@@ -98,4 +99,3 @@ pipeline {
     }
   }
 }
-
