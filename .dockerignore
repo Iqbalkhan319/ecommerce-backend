@@ -1,12 +1,7 @@
 **/node_modules
-**/dist
-**/coverage
-**/.git
-**/.env
-**/.env.*
-!**/.env.example
-**/*.log
-**/*.tsbuildinfo
+.git
 docs
-infrastructure/keys
-storage
+k8s-apps
+k8s-infra-manifest
+infrastructure
+**/dist
