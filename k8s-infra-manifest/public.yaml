@@ -30,7 +30,7 @@ spec:
         fsGroup: 1000
       containers:
       - name: public-service
-        image: nuruzzaman24x/ecom-public:b17
+        image: nuruzzaman24x/ecom-public:b18
         imagePullPolicy: Always
         ports:
         - containerPort: 3003
