@@ -1,0 +1,31 @@
+### Lab-er jonno nijer CA: selfsigned issuer -> CA certificate -> ecom-ca issuer
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ecom-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: ecom-ca
+  secretName: ecom-ca-secret
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned
+    kind: ClusterIssuer
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: ecom-ca
+spec:
+  ca:
+    secretName: ecom-ca-secret

@@ -31,7 +31,7 @@ spec:                                           # Deployment-এর বিবর
         fsGroup: 1000                           # মাউন্ট করা ভলিউমের ফাইলের গ্রুপ ১০০০, যাতে অ্যাপ লিখতে পারে
       containers:                               # পডের ভেতরের container-এর তালিকা
       - name: auth-service                      # container-এর নাম
-        image: nuruzzaman24x/ecom-auth:b6      # যে Docker image চালাবে (Docker Hub থেকে)
+        image: nuruzzaman24x/ecom-auth:b7      # যে Docker image চালাবে (Docker Hub থেকে)
         imagePullPolicy: Always
         ports:                                  # container-এর দরজা
         - containerPort: 3001                   # container এই পোর্টে শোনে
@@ -194,7 +194,7 @@ spec:                                           # Deployment-এর বিবর
 #         fsGroup: 1000
 #       containers:
 #       - name: auth-service
-#         image: nuruzzaman24x/ecom-auth:1.0
+#         image: nuruzzaman24x/ecom-auth:b7
 #         ports:
 #         - containerPort: 3001
 #         securityContext:

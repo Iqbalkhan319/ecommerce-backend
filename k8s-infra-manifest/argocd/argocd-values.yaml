@@ -1,8 +1,16 @@
-### ArgoCD (Helm): NodePort 30850 (HTTP), TLS ছাড়া চালানো হচ্ছে lab-এর জন্য।
+### ArgoCD (Helm): ClusterIP + Ingress (https://argocd.local), TLS ingress-nginx-e shesh hoy.
+global:
+  domain: argocd.local
+
 configs:
   params:
     server.insecure: true
 
 server:
-  service:
-    type: ClusterIP
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hostname: argocd.local
+    tls: true
+    annotations:
+      cert-manager.io/cluster-issuer: ecom-ca
