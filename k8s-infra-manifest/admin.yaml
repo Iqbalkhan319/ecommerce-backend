@@ -19,7 +19,7 @@ spec:                                           # Deployment-এর বিবর
         fsGroup: 1000                           # মাউন্ট করা ভলিউমের ফাইলের গ্রুপ ১০০০, যাতে অ্যাপ লিখতে পারে
       containers:                               # পডের ভেতরের container-এর তালিকা
       - name: admin-service                     # container-এর নাম
-        image: nuruzzaman24x/ecom-admin:b26     # যে Docker image চালাবে (Docker Hub থেকে)
+        image: nuruzzaman24x/ecom-admin:b27     # যে Docker image চালাবে (Docker Hub থেকে)
         imagePullPolicy: Always
         ports:                                  # container-এর দরজা
         - containerPort: 3002                   # container এই পোর্টে শোনে
