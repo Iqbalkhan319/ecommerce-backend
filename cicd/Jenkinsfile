@@ -1,14 +1,17 @@
+
 pipeline {
   agent any
 
   options {
     disableConcurrentBuilds()
+    timeout(time: 60, unit: 'MINUTES')
   }
 
   environment {
-    REGISTRY = 'nuruzzaman24x'
-    TAG      = "b${env.BUILD_NUMBER}"
-    REPO_URL = 'github.com/nuruzzaman24x/ecommerce-backend.git'
+    REGISTRY        = 'nuruzzaman24x'
+    TAG             = "b${env.BUILD_NUMBER}"
+    REPO_URL        = 'github.com/nuruzzaman24x/ecommerce-backend.git'
+    DOCKER_BUILDKIT = '1'
   }
 
   stages {
@@ -56,7 +59,7 @@ pipeline {
           for svc in auth admin public; do
             echo "===== Trivy scan: ecom-$svc:$TAG ====="
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/ aquasec/trivy:0.71.2 image --severity HIGH --ignore-unfixed --exit-code 0 --no-progress $REGISTRY/ecom-$svc:$TAG
-            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/ aquasec/trivy:0.71.2 image --severity CRITICAL --ignore-unfixed --exit-code 1 --no-progress $REGISTRY/ecom-$svc:$TAG
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/ aquasec/trivy:0.71.2 image --skip-db-update --severity CRITICAL --ignore-unfixed --exit-code 1 --no-progress $REGISTRY/ecom-$svc:$TAG
           done
         '''
       }
@@ -100,3 +103,107 @@ pipeline {
     }
   }
 }
+
+################# for disk slow, this file is not working ##########
+// pipeline {
+//   agent any
+
+//   options {
+//     disableConcurrentBuilds()
+//   }
+
+//   environment {
+//     REGISTRY = 'nuruzzaman24x'
+//     TAG      = "b${env.BUILD_NUMBER}"
+//     REPO_URL = 'github.com/nuruzzaman24x/ecommerce-backend.git'
+//   }
+
+//   stages {
+//     stage('Build auth') {
+//       steps {
+//         sh 'docker build -f services/auth/Dockerfile --target runtime -t $REGISTRY/ecom-auth:$TAG .'
+//       }
+//     }
+
+//     stage('Build admin') {
+//       steps {
+//         sh 'docker build -f services/admin/Dockerfile --target runtime -t $REGISTRY/ecom-admin:$TAG .'
+//       }
+//     }
+
+//     stage('Build public') {
+//       steps {
+//         sh 'docker build -f services/public/Dockerfile --target runtime -t $REGISTRY/ecom-public:$TAG .'
+//       }
+//     }
+
+//     stage('SonarQube scan') {
+//       steps {
+//         withCredentials([string(credentialsId: 'ecom-sonar-token', variable: 'SONAR_TOKEN')]) {
+//           sh '''
+//             docker run --rm \
+//               --add-host sonar.local:172.17.0.14 \
+//               -e SONAR_TOKEN \
+//               -e SONAR_HOST_URL="http://sonar.local" \
+//               -v "$WORKSPACE":/usr/src \
+//               sonarsource/sonar-scanner-cli:latest \
+//               -Dsonar.projectKey=ecom-backend \
+//               -Dsonar.sources=services,packages \
+//               -Dsonar.exclusions="**/node_modules/**,**/dist/**,**/migrations/**" \
+//               -Dsonar.ws.timeout=600 \
+//               -Dsonar.working.directory=/tmp/.scannerwork
+//           '''
+//         }
+//       }
+//     }
+
+//     stage('Security scan (Trivy)') {
+//       steps {
+//         sh '''
+//           for svc in auth admin public; do
+//             echo "===== Trivy scan: ecom-$svc:$TAG ====="
+//             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/ aquasec/trivy:0.71.2 image --severity HIGH --ignore-unfixed --exit-code 0 --no-progress $REGISTRY/ecom-$svc:$TAG
+//             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/ aquasec/trivy:0.71.2 image --severity CRITICAL --ignore-unfixed --exit-code 1 --no-progress $REGISTRY/ecom-$svc:$TAG
+//           done
+//         '''
+//       }
+//     }
+
+//     stage('Push to Docker Hub') {
+//       steps {
+//         withCredentials([usernamePassword(credentialsId: 'ecom-dockerhub',
+//                                           usernameVariable: 'DH_USER',
+//                                           passwordVariable: 'DH_PASS')]) {
+//           sh '''
+//             echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
+//             docker push $REGISTRY/ecom-auth:$TAG
+//             docker push $REGISTRY/ecom-admin:$TAG
+//             docker push $REGISTRY/ecom-public:$TAG
+//             docker logout
+//           '''
+//         }
+//       }
+//     }
+
+//     stage('Update manifest in git') {
+//       steps {
+//         withCredentials([usernamePassword(credentialsId: 'ecom-github',
+//                                           usernameVariable: 'GH_USER',
+//                                           passwordVariable: 'GH_PASS')]) {
+//           sh '''
+//             sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-auth:)[^[:space:]#]+|\\1$TAG|"   k8s-infra-manifest/auth.yaml
+//             sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-admin:)[^[:space:]#]+|\\1$TAG|"  k8s-infra-manifest/admin.yaml
+//             sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-public:)[^[:space:]#]+|\\1$TAG|" k8s-infra-manifest/public.yaml
+//             grep -n "^[[:space:]]*image:" k8s-infra-manifest/auth.yaml k8s-infra-manifest/admin.yaml k8s-infra-manifest/public.yaml
+
+//             git config user.email "jenkins@local"
+//             git config user.name "jenkins"
+//             git add k8s-infra-manifest/
+//             git commit -m "ci: deploy $TAG [skip ci]"
+//             git push https://$GH_USER:$GH_PASS@$REPO_URL HEAD:main
+//           '''
+//         }
+//       }
+//     }
+//   }
+// }
