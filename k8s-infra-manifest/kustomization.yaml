@@ -43,3 +43,11 @@ configMapGenerator:                            # ফাইল বা মান �
 
 generatorOptions:                              # সব ConfigMap এর ডিফল্ট নিয়ম
   disableNameSuffixHash: true                  # ডিফল্টে নামের শেষে hash বসবে না (kong-config ওপরে এটা ওভাররাইড করেছে)
+
+patches:                                       # probe সংশোধনের patch
+  - {path: patches/probes-admin.yaml,  target: {kind: Deployment, name: admin-service}}
+  - {path: patches/probes-auth.yaml,   target: {kind: Deployment, name: auth-service}}
+  - {path: patches/probes-public.yaml, target: {kind: Deployment, name: public-service}}
+  - {path: patches/probes-redisinsight.yaml, target: {kind: Deployment, name: redisinsight}}
+  - {path: patches/probes-timeout-exec.yaml, target: {kind: StatefulSet, name: postgres}}
+  - {path: patches/probes-timeout-exec.yaml, target: {kind: StatefulSet, name: redis}}
