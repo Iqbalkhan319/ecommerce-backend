@@ -16,6 +16,9 @@ spec:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
+    extensions:
+      health_check:                  ### operator ei extension dekhe liveness/readiness probe boshay
+        endpoint: 0.0.0.0:13133      ### health check port
     processors:
       memory_limiter:                ### memory beshi hole data drop kore, Collector crash theke bachay
         check_interval: 1s
@@ -28,6 +31,7 @@ spec:
         tls:
           insecure: true             ### cluster-er bhitore plain gRPC
     service:
+      extensions: [health_check]     ### extension enable na korle config-e thakleo chalu hoy na
       pipelines:
         traces:
           receivers: [otlp]
