@@ -18,7 +18,7 @@ kubectl apply -f $B/ingress-nginx/controller-service.yaml
 
 echo "== 3. Sealed Secrets (age private key restore, tarpor controller)"
 kubectl apply -f "$SSKEY"
-kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.36.5/controller.yaml
+kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.41.2/controller.yaml
 kubectl rollout restart deploy/sealed-secrets-controller -n kube-system
 kubectl rollout status deploy/sealed-secrets-controller -n kube-system --timeout=3m
 
