@@ -3,36 +3,24 @@ kind: Ingress
 metadata:
   name: ecom-backend
   namespace: ecom
+  annotations:
+    cert-manager.io/cluster-issuer: ecom-ca
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
 spec:
   ingressClassName: nginx
+  tls:
+  - hosts: [api.local, rabbitmq.local, redis.local]
+    secretName: backend-tls
   rules:
   - host: api.local
     http:
       paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: kong
-            port:
-              number: 8000
+      - {path: /, pathType: Prefix, backend: {service: {name: kong, port: {number: 8000}}}}
   - host: rabbitmq.local
     http:
       paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: rabbitmq
-            port:
-              number: 15672
+      - {path: /, pathType: Prefix, backend: {service: {name: rabbitmq, port: {number: 15672}}}}
   - host: redis.local
     http:
       paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: redisinsight
-            port:
-              number: 5540
+      - {path: /, pathType: Prefix, backend: {service: {name: redisinsight, port: {number: 5540}}}}

@@ -1,4 +1,4 @@
-### Kibana (Helm): Elasticsearch-er sathe connect, ClusterIP + Ingress (kibana.local).
+### Kibana (Helm): Elasticsearch-er sathe connect, ClusterIP + HTTPS Ingress (kibana.local).
 elasticsearchHosts: "https://elasticsearch-master:9200"
 
 resources:
@@ -15,7 +15,14 @@ service:
 ingress:
   enabled: true
   className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: ecom-ca
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
   hosts:
     - host: kibana.local
       paths:
         - path: /
+  tls:
+    - secretName: kibana-tls
+      hosts:
+        - kibana.local
