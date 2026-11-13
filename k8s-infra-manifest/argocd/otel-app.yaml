@@ -1,0 +1,25 @@
+### ArgoCD Application: Jaeger + OpenTelemetry (monitoring namespace)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ecom-otel
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/nuruzzaman24x/ecommerce-backend.git
+    targetRevision: main
+    path: k8s-infra-manifest/otel
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff: {duration: 10s, factor: 2, maxDuration: 3m}
