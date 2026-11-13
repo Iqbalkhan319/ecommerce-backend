@@ -1,0 +1,31 @@
+community:
+  enabled: true
+ingress:
+  annotations:
+    cert-manager.io/cluster-issuer: ecom-ca
+    nginx.ingress.kubernetes.io/proxy-body-size: 64m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '600'
+    nginx.ingress.kubernetes.io/proxy-request-buffering: 'off'
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '600'
+    nginx.ingress.kubernetes.io/ssl-redirect: 'false'
+  enabled: true
+  hosts:
+  - name: sonar.local
+    path: /
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - sonar.local
+    secretName: sonar-tls
+persistence:
+  enabled: true
+  size: 10Gi
+  storageClass: local-path-retain
+resources:
+  limits:
+    memory: 3Gi
+  requests:
+    cpu: 500m
+    memory: 2Gi
+service:
+  type: ClusterIP
