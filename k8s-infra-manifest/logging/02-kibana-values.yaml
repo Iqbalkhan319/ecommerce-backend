@@ -17,7 +17,7 @@ ingress:
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: ecom-ca
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
   hosts:
     - host: kibana.local
       paths:
@@ -26,3 +26,12 @@ ingress:
     - secretName: kibana-tls
       hosts:
         - kibana.local
+
+# Encryption key gulo Git-e na, secret `kibana-encryption-keys` theke ashe (namespace: logging)
+extraEnvs:
+  - name: XPACK_SECURITY_ENCRYPTIONKEY
+    valueFrom: {secretKeyRef: {name: kibana-encryption-keys, key: security}}
+  - name: XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY
+    valueFrom: {secretKeyRef: {name: kibana-encryption-keys, key: saved}}
+  - name: XPACK_REPORTING_ENCRYPTIONKEY
+    valueFrom: {secretKeyRef: {name: kibana-encryption-keys, key: reporting}}
