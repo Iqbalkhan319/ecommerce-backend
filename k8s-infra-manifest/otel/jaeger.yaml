@@ -21,6 +21,17 @@ spec:
             - containerPort: 16686
             - containerPort: 4317
             - containerPort: 4318
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 16686
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 16686
+            initialDelaySeconds: 20
+            periodSeconds: 15
           resources:
             requests:
               cpu: 100m
