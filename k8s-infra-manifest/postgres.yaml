@@ -84,12 +84,14 @@ spec:                                   # বিবরণ
               command: ["sh", "-c", "pg_isready -h 127.0.0.1 -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]   # -h 127.0.0.1 দিয়ে আসল চালু হওয়া পর্যন্ত অপেক্ষা (প্রথমবারের init চলার সময় ভুল করে "তৈরি" বলবে না)
             initialDelaySeconds: 10     # শুরুর ১০ সেকেন্ড পরে প্রথম প্রশ্ন
             periodSeconds: 10           # প্রতি ১০ সেকেন্ডে
+            timeoutSeconds: 5
             failureThreshold: 10        # পরপর ১০ বার ব্যর্থ হলে "তৈরি না"
           livenessProbe:                # "তুমি বেঁচে আছো?" প্রশ্ন (না হলে Pod নতুন করে চালু হবে)
             exec:                       # container এর ভেতরে এই কমান্ড চালাও
               command: ["sh", "-c", "pg_isready -h 127.0.0.1 -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]   # একই পরীক্ষা
             initialDelaySeconds: 60     # প্রথমবার init শেষ হওয়ার সময় দিতে ৬০ সেকেন্ড পরে শুরু
             periodSeconds: 20           # প্রতি ২০ সেকেন্ডে
+            timeoutSeconds: 5
             failureThreshold: 6         # পরপর ৬ বার ব্যর্থ হলে restart
           resources:                    # কতটা RAM লাগবে
             requests:                   # অন্তত যতটা দরকার (node বাছাইয়ের সময় ধরা হয়)

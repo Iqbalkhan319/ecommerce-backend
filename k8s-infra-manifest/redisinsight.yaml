@@ -45,6 +45,16 @@ spec:
                 secretKeyRef:
                   name: ecom-secrets
                   key: REDIS_PASSWORD
+          readinessProbe:
+            tcpSocket: {port: 5540}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            tcpSocket: {port: 5540}
+            initialDelaySeconds: 40
+            periodSeconds: 20
+            timeoutSeconds: 3
           resources:
             requests:
               cpu: 100m

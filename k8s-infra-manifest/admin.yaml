@@ -131,16 +131,21 @@ spec:                                           # Deployment-এর বিবর
         volumeMounts:                           # কোন ভলিউম container-এর কোথায় বসবে
         - {name: tmp, mountPath: /tmp}          # tmp নামের অস্থায়ী ভলিউম /tmp-এ বসে, লেখার জায়গা
         - {name: invoices, mountPath: /app/storage/invoices}   # invoices ভলিউম ইনভয়েস ফোল্ডারে বসে, স্থায়ী ফাইল রাখতে
-        readinessProbe:                         # "তুমি কাজের জন্য তৈরি?" পরীক্ষা
-          httpGet: {path: /health/ready, port: 3002}   # এই ঠিকানায় HTTP অনুরোধ পাঠিয়ে দেখে
-          initialDelaySeconds: 20               # চালুর ২০ সেকেন্ড পরে প্রথম পরীক্ষা
-          periodSeconds: 10                     # প্রতি ১০ সেকেন্ডে পরীক্ষা
-          failureThreshold: 12                  # পরপর ১২ বার ব্যর্থ হলে "তৈরি না"
-        livenessProbe:                          # "তুমি বেঁচে আছো?" পরীক্ষা
-          httpGet: {path: /health/ready, port: 3002}   # একই ঠিকানায় পরীক্ষা
-          initialDelaySeconds: 90               # চালুর ৯০ সেকেন্ড পরে শুরু (migration-এর সময় দিতে)
-          periodSeconds: 20                     # প্রতি ২০ সেকেন্ডে পরীক্ষা
-          failureThreshold: 6                   # পরপর ৬ বার ব্যর্থ হলে পড রিস্টার্ট
+        startupProbe:
+          httpGet: {path: /health/live, port: 3002}
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 36
+        readinessProbe:
+          httpGet: {path: /health/ready, port: 3002}
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        livenessProbe:
+          httpGet: {path: /health/live, port: 3002}
+          periodSeconds: 20
+          timeoutSeconds: 3
+          failureThreshold: 3
         resources:                              # RAM-এর হিসাব
           requests: {cpu: 100m, memory: 128Mi}             # অন্তত ১২৮ MB দরকার (নোড বাছাইয়ের সময় ধরা হয়)
           limits: {memory: 512Mi}               # সর্বোচ্চ ৫১২ MB নিতে পারবে

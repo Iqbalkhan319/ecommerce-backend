@@ -54,12 +54,14 @@ spec:
               command: ["sh", "-c", "redis-cli ping | grep -q PONG"]
             initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 5
             failureThreshold: 10
           livenessProbe:
             exec:
               command: ["sh", "-c", "redis-cli ping | grep -q PONG"]
             initialDelaySeconds: 30
             periodSeconds: 20
+            timeoutSeconds: 5
             failureThreshold: 6
           resources:
             requests:
