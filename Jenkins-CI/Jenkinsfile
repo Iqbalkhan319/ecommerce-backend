@@ -87,10 +87,10 @@ pipeline {
                                           usernameVariable: 'GH_USER',
                                           passwordVariable: 'GH_PASS')]) {
           sh '''
-            sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-auth:)[^[:space:]#]+|\\1$TAG|"   k8s-infra-manifest/auth.yaml
-            sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-admin:)[^[:space:]#]+|\\1$TAG|"  k8s-infra-manifest/admin.yaml
-            sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-public:)[^[:space:]#]+|\\1$TAG|" k8s-infra-manifest/public.yaml
-            grep -n "^[[:space:]]*image:" k8s-infra-manifest/auth.yaml k8s-infra-manifest/admin.yaml k8s-infra-manifest/public.yaml
+            sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-auth:)[^[:space:]#]+|\\1$TAG|"   k8s-infra-manifest/ecom/apps/auth.yaml
+            sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-admin:)[^[:space:]#]+|\\1$TAG|"  k8s-infra-manifest/ecom/apps/admin.yaml
+            sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-public:)[^[:space:]#]+|\\1$TAG|" k8s-infra-manifest/ecom/apps/public.yaml
+            grep -n "^[[:space:]]*image:" k8s-infra-manifest/ecom/apps/auth.yaml k8s-infra-manifest/ecom/apps/admin.yaml k8s-infra-manifest/ecom/apps/public.yaml
 
             git config user.email "jenkins@local"
             git config user.name "jenkins"
@@ -191,10 +191,10 @@ pipeline {
 //                                           usernameVariable: 'GH_USER',
 //                                           passwordVariable: 'GH_PASS')]) {
 //           sh '''
-//             sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-auth:)[^[:space:]#]+|\\1$TAG|"   k8s-infra-manifest/auth.yaml
-//             sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-admin:)[^[:space:]#]+|\\1$TAG|"  k8s-infra-manifest/admin.yaml
-//             sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-public:)[^[:space:]#]+|\\1$TAG|" k8s-infra-manifest/public.yaml
-//             grep -n "^[[:space:]]*image:" k8s-infra-manifest/auth.yaml k8s-infra-manifest/admin.yaml k8s-infra-manifest/public.yaml
+//             sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-auth:)[^[:space:]#]+|\\1$TAG|"   k8s-infra-manifest/ecom/apps/auth.yaml
+//             sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-admin:)[^[:space:]#]+|\\1$TAG|"  k8s-infra-manifest/ecom/apps/admin.yaml
+//             sed -i -E "s|^([[:space:]]+image: $REGISTRY/ecom-public:)[^[:space:]#]+|\\1$TAG|" k8s-infra-manifest/ecom/apps/public.yaml
+//             grep -n "^[[:space:]]*image:" k8s-infra-manifest/ecom/apps/auth.yaml k8s-infra-manifest/ecom/apps/admin.yaml k8s-infra-manifest/ecom/apps/public.yaml
 
 //             git config user.email "jenkins@local"
 //             git config user.name "jenkins"

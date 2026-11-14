@@ -4,25 +4,25 @@ kind: Kustomization                            # এই ফাইলের ধ�
 namespace: ecom                                # সব রিসোর্স এই namespace এ যাবে
 
 resources:                                     # যে ফাইলগুলো একসাথে apply হবে
-  - postgres-init-configmap.yaml               # postgres এর init script
-  - redis-conf-configmap.yaml                  # redis এর কনফিগ
-  - rabbitmq-conf-configmap.yaml               # rabbitmq এর কনফিগ
-  - postgres.yaml                              # postgres
-  - redis.yaml                                 # redis
-  - rabbitmq.yaml                              # rabbitmq
-  - auth.yaml                                  # auth-service
-  - admin.yaml                                 # admin-service ও admin-ui
-  - public.yaml                                # public-service ও storefront
-  - kong.yaml                                  # Kong gateway
-  - redisinsight.yaml                          # redisinsight
-  - seed-jobs.yaml                             # seed job গুলো
-  - ingress.yaml                               # backend ingress
-  - ecom-secrets-sealed.yaml                   # sealed secrets
+  - ecom/database/postgres-init-configmap.yaml               # postgres এর init script
+  - ecom/cache/redis-conf-configmap.yaml                  # redis এর কনফিগ
+  - ecom/messaging/rabbitmq-conf-configmap.yaml               # rabbitmq এর কনফিগ
+  - ecom/database/postgres.yaml                              # postgres
+  - ecom/cache/redis.yaml                                 # redis
+  - ecom/messaging/rabbitmq.yaml                              # rabbitmq
+  - ecom/apps/auth.yaml                                  # auth-service
+  - ecom/apps/admin.yaml                                 # admin-service ও admin-ui
+  - ecom/apps/public.yaml                                # public-service ও storefront
+  - ecom/gateway/kong.yaml                                  # Kong gateway
+  - ecom/cache/redisinsight.yaml                          # redisinsight
+  - ecom/apps/seed-jobs.yaml                             # seed job গুলো
+  - ecom/gateway/ingress.yaml                               # backend ingress
+  - ecom/secrets/ecom-secrets-sealed.yaml                   # sealed secrets
 
 configMapGenerator:                            # ফাইল বা মান থেকে ConfigMap বানানোর অংশ
   - name: kong-config                          # Kong এই নামেই ConfigMap পড়ে (kong.yaml এ আছে)
     files:                                     # ConfigMap এ যে ফাইল যাবে
-      - kong.yml=kong.rendered.yml             # kong.rendered.yml এর ভেতরের নাম হবে kong.yml
+      - kong.yml=ecom/gateway/kong.rendered.yml             # kong.rendered.yml এর ভেতরের নাম হবে kong.yml
     options:                                   # শুধু এই ConfigMap এর জন্য আলাদা নিয়ম
       disableNameSuffixHash: false             # ফাইল বদলালে নামের শেষে নতুন hash বসবে, তাই Kong নিজে রিস্টার্ট হবে
   - name: ecom-config                          # বাকি সার্ভিসের সাধারণ কনফিগ (অপরিবর্তিত)
