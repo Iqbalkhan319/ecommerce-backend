@@ -382,7 +382,7 @@ git commit -m "Set ingress IP for new cluster"
 git push origin main
 ```
 
-Files affected: `k8s-manifest/ingress.yaml`, `k8s-manifest/kong.yaml`, `k8s-manifest/kong.rendered.yml` (CORS origins), `monitoring/values.yaml` (Grafana host), `gitops/argocd-ingress.yaml`.
+Files affected: `k8s-infra-manifest/ecom/gateway/ingress.yaml`, `k8s-infra-manifest/ecom/gateway/kong.yaml`, `k8s-infra-manifest/ecom/gateway/kong.rendered.yml` (CORS origins), `monitoring/values.yaml` (Grafana host), `gitops/argocd-ingress.yaml`.
 
 ### Step 6: Create the application Secret (`ecom-secrets`)
 
@@ -421,7 +421,7 @@ Keep the `.pem` files in a safe place outside Git. Never commit them.
 
 ### Step 7: Put the new JWT public key into Kong's config
 
-Kong verifies tokens with the public key stored in `k8s-manifest/kong.rendered.yml`. If you generated a new key pair in Step 6, update the file, otherwise every protected API returns `401 Unauthorized`.
+Kong verifies tokens with the public key stored in `k8s-infra-manifest/ecom/gateway/kong.rendered.yml`. If you generated a new key pair in Step 6, update the file, otherwise every protected API returns `401 Unauthorized`.
 
 (Skip this step only if you reused the same key pair that is already in the file.)
 
@@ -438,7 +438,7 @@ EOF
 
 git diff kong.rendered.yml
 cd ~/ecommerce-backend
-git add k8s-manifest/kong.rendered.yml
+git add k8s-infra-manifest/ecom/gateway/kong.rendered.yml
 git commit -m "Update Kong JWT public key"
 git push origin main
 ```
@@ -447,7 +447,7 @@ Check the first key line matches your public key:
 
 ```bash
 sed -n '2p' ~/ecom-secrets/jwt-public.pem
-grep -A1 "BEGIN PUBLIC KEY" ~/ecommerce-backend/k8s-manifest/kong.rendered.yml | tail -1
+grep -A1 "BEGIN PUBLIC KEY" ~/ecommerce-backend/k8s-infra-manifest/ecom/gateway/kong.rendered.yml | tail -1
 ```
 
 ### Step 8: Build and push the Docker images

@@ -8,13 +8,13 @@ consumers:
         algorithm: RS256
         rsa_public_key: |
           -----BEGIN PUBLIC KEY-----
-          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyZ2MVusZrCQXnS+tu6rB
-          H/tTyUKt0FNpsHUd73uSC3YRVNS2L4G+aLW1cEu/Kxdd88jREVvSCEPougH4B62G
-          IfRBY10O+RhS7N0LQRMe0UfRQC0HmuOdxEqmI6JPf+V1Y6J68Wa/lO9XSAHpccuB
-          6AXa3o4Gt3oSJs/Qb4r0h0rMm9ILl0zhXJIUgne0+58SCra7nhvf6frZDnlEgy4u
-          6l+fIGtsWX2DRoz5HVKIQbJozhWFTQzkXYQkJFi94ghAsCdi/zvNWJcCSpZsjv5P
-          WVkKKD4jvkVoeCqkV1maBwfNEq28QEtCM3yfi2cQ1/IcZc3RoQU4paM4fUbenJcc
-          kQIDAQAB
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAhRXv0whzIqw4JFaY2mEN
+          rjiZnG4sTgYxo81QemARS7XKGeKz+DY9F8DeqYJ4oy0e7DX5/2tgqWw+SfZ0Tm+i
+          UY+1Jvc5RVqJUjbErbT2a1Z4DiYZ1Q8JFgsOJVK2jN6PH2DCh/uhzsTZjrP7i5Rr
+          k/ksTvptwfQxeq/Oj9Lc+cFaedlu7z75MzZGkDgpgS7hsCAM7mjvnaMs4IS0B6Rc
+          AVDDEA9RiIMN9QM5uWYvM4lLQNgudm/tsWTzz4CuLhFhhThPeZeTSCqAkxPKk0f1
+          GXvfEjrPqqvttlQZkNAaajdauuzvlK0oUVIMFuQhNaTj3gjEmNH9IDbsOlHm0WCt
+          qQIDAQAB
           -----END PUBLIC KEY-----
 
 services:
@@ -110,7 +110,7 @@ plugins:
 
   - name: cors
     config:
-      origins: [http://shop.local, http://admin.local]
+      origins: [https://shop.local, https://admin.local]
       methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
       headers:
         - Accept
