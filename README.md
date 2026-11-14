@@ -670,3 +670,4 @@ The `kubectl apply -k monitoring/ecom` step only works after the Helm install, b
 3. Single replica for every service, and plain HTTP (no TLS).
 4. No database backups. Postgres data lives on one node's local disk.
 5. Alertmanager does not deliver notifications yet.
+
