@@ -14,3 +14,25 @@ server:
     tls: true
     annotations:
       cert-manager.io/cluster-issuer: ecom-ca
+
+
+redis:
+  readinessProbe:
+    enabled: true                    ### argocd-redis ready check
+  livenessProbe:
+    enabled: true                    ### argocd-redis hang korle restart
+
+applicationSet:
+  readinessProbe:
+    enabled: true                    ### applicationset-controller ready check
+  livenessProbe:
+    enabled: true                    ### applicationset-controller hang korle restart
+
+notifications:
+  readinessProbe:
+    enabled: true                    ### notifications-controller ready check
+  livenessProbe:
+    enabled: true                    ### notifications-controller hang korle restart
+
+dex:
+  enabled: false                     ### SSO use kori na, tai Dex lagbe na
