@@ -7,7 +7,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/nuruzzaman24x/ecommerce-backend.git
+    repoURL: https://github.com/iqbalkhan319/ecommerce-backend.git
     targetRevision: main
     path: k8s-infra-manifest/otel
   destination:
